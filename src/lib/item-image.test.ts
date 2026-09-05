@@ -273,7 +273,7 @@ describe("background warming", () => {
     mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/shared.jpg"]));
 
     // Resolve two on demand. This also resumes warming, which will pick up the
-    // remaining two — the point being that it must not redo the first two.
+    // remaining two. The point is that it must not redo the first two.
     await resolveItemImage(items[0].id);
     await resolveItemImage(items[1].id);
     await __drainImageQueueForTest();
@@ -298,7 +298,7 @@ describe("background warming", () => {
 
     mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/resume.jpg"]));
 
-    // Nothing is warming — this is the state after a restart or an idle
+    // Nothing is warming. This is the state after a restart or an idle
     // spin-down, where previously only a manual sync would start it again.
     expect(isWarmingStore(storeId)).toBe(false);
 
@@ -359,7 +359,7 @@ describe("stable ordering while warming", () => {
       })
     ).map((i) => i.id);
 
-    // Resolve artwork for the oldest item — under the old `updatedAt` ordering
+    // Resolve artwork for the oldest item. Under the old `updatedAt` ordering
     // this would have yanked it to the front of the storefront.
     mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/order.jpg"]));
     await resolveItemImage(made[0].id);
@@ -392,7 +392,7 @@ describe("cached image cleanup", () => {
     // This is what a sync does for listings that are no longer for sale.
     await prisma.inventoryItem.deleteMany({ where: { id: { in: [item.id] } } });
 
-    // The image URL and release blob live on the row, so they go with it —
+    // The image URL and release blob live on the row, so they go with it.
     // there is no separate blob to orphan.
     expect(await prisma.inventoryItem.findUnique({ where: { id: item.id } })).toBeNull();
     expect(await resolveItemImage(item.id)).toEqual({ status: "not-found" });

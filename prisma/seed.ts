@@ -19,12 +19,12 @@ async function main() {
         slug: DEMO_SLUG,
         name: "Resin Demo Store",
         email: DEMO_EMAIL,
-        // Random on every fresh seed — this account is a public storefront demo,
+        // Random on every fresh seed. This account is a public storefront demo,
         // never meant to be logged into, so no one should know its password.
         passwordHash: await hashPassword(randomBytes(24).toString("hex")),
         discogsUsername: DEMO_DISCOGS_USERNAME,
         description:
-          "A live demo pulling real inventory from an actual Discogs seller account — search, browse, and click into an item to see what your customers would see.",
+          "A live demo pulling real inventory from an actual Discogs seller account. Search, browse, and click into an item to see what your customers would see.",
         accentColor: "#9333ea",
       },
     }));
@@ -32,11 +32,11 @@ async function main() {
   console.log(`Demo store ready: /store/${store.slug}`);
 
   if (store.lastSyncAt) {
-    console.log(`Demo store already synced (last: ${store.lastSyncAt.toISOString()}) — skipping.`);
+    console.log(`Demo store already synced (last: ${store.lastSyncAt.toISOString()}). Skipping.`);
     return;
   }
 
-  console.log("Syncing demo inventory from Discogs — this can take a minute or two...");
+  console.log("Syncing demo inventory from Discogs. This can take a minute or two...");
   const result = await syncStoreInventory(store);
   console.log(
     result.ok

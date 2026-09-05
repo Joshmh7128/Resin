@@ -43,13 +43,13 @@ async function main() {
   ]);
   const winners = a.count + b.count;
   console.log(
-    `Guard 1 (concurrent claim): ${winners} of 2 claims succeeded — ${winners === 1 ? "PASS" : "FAIL"}`,
+    `Guard 1 (concurrent claim): ${winners} of 2 claims succeeded: ${winners === 1 ? "PASS" : "FAIL"}`,
   );
 
   // --- Guard 2: stale running status --------------------------------------
   const fresh = await prisma.store.findUniqueOrThrow({ where: { id: store.id } });
   console.log(
-    `Guard 2a (fresh running blocks): isSyncRunning=${isSyncRunning(fresh)} — ${isSyncRunning(fresh) ? "PASS" : "FAIL"}`,
+    `Guard 2a (fresh running blocks): isSyncRunning=${isSyncRunning(fresh)}: ${isSyncRunning(fresh) ? "PASS" : "FAIL"}`,
   );
 
   await prisma.store.update({
@@ -58,7 +58,7 @@ async function main() {
   });
   const stale = await prisma.store.findUniqueOrThrow({ where: { id: store.id } });
   console.log(
-    `Guard 2b (stale running expires): isSyncRunning=${isSyncRunning(stale)} — ${!isSyncRunning(stale) ? "PASS" : "FAIL"}`,
+    `Guard 2b (stale running expires): isSyncRunning=${isSyncRunning(stale)}: ${!isSyncRunning(stale) ? "PASS" : "FAIL"}`,
   );
 
   const staleClaim = await prisma.store.updateMany({
@@ -66,7 +66,7 @@ async function main() {
     data: { lastSyncStatus: "running", syncStartedAt: new Date() },
   });
   console.log(
-    `Guard 2c (stale is reclaimable): claimed=${staleClaim.count} — ${staleClaim.count === 1 ? "PASS" : "FAIL"}`,
+    `Guard 2c (stale is reclaimable): claimed=${staleClaim.count}: ${staleClaim.count === 1 ? "PASS" : "FAIL"}`,
   );
 
   // Leave the store idle again.

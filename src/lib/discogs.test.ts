@@ -45,7 +45,7 @@ describe("Discogs throttle", () => {
       return okResponse();
     }) as unknown as typeof fetch;
 
-    // Three callers at once — the exact pattern that previously slipped through
+    // Three callers at once, the exact pattern that previously slipped through
     // the throttle together and got us rate limited.
     await Promise.all([
       fetchReleaseDetails(1, TOKEN),

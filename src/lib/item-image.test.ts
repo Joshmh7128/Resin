@@ -220,3 +220,58 @@ describe("resolveItemImage", () => {
     expect(await resolveItemImage("does-not-exist")).toEqual({ status: "not-found" });
   });
 });
+
+describe("cached image cleanup", () => {
+  it("discards the cached image when a sold listing is removed", async () => {
+    const item = await makeItem({});
+    mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/sold.jpg"]));
+
+    await resolveItemImage(item.id);
+    await __drainImageQueueForTest();
+
+    const cached = await prisma.inventoryItem.findUniqueOrThrow({ where: { id: item.id } });
+    expect(cached.imageUrl).toBe("https://img.discogs.com/sold.jpg");
+    expect(cached.rawData).not.toBeNull();
+
+    // This is what a sync does for listings that are no longer for sale.
+    await prisma.inventoryItem.deleteMany({ where: { id: { in: [item.id] } } });
+
+    // The image URL and release blob live on the row, so they go with it —
+    // there is no separate blob to orphan.
+    expect(await prisma.inventoryItem.findUnique({ where: { id: item.id } })).toBeNull();
+    expect(await resolveItemImage(item.id)).toEqual({ status: "not-found" });
+  });
+
+  it("discards cached images for every item when a store is deleted", async () => {
+    const store = await prisma.store.create({
+      data: {
+        slug: "cascade-test-store",
+        name: "Cascade Test",
+        email: "cascade-test@example.com",
+        passwordHash: "not-a-real-hash",
+        discogsUsername: "example",
+      },
+    });
+
+    await prisma.inventoryItem.createMany({
+      data: [1, 2, 3].map((n) => ({
+        storeId: store.id,
+        listingId: BigInt(nextListingId++),
+        releaseId: 4000 + n,
+        title: `Cascade ${n}`,
+        artist: "Artist",
+        searchText: `artist cascade ${n}`,
+        status: "For Sale",
+        imageUrl: `https://img.discogs.com/cascade-${n}.jpg`,
+        rawData: JSON.stringify({ images: [`https://img.discogs.com/cascade-${n}.jpg`] }),
+      })),
+    });
+
+    expect(await prisma.inventoryItem.count({ where: { storeId: store.id } })).toBe(3);
+
+    await prisma.store.delete({ where: { id: store.id } });
+
+    // The relation cascades, so no cached image data is left behind.
+    expect(await prisma.inventoryItem.count({ where: { storeId: store.id } })).toBe(0);
+  });
+});

@@ -7,15 +7,20 @@ counter or in the crates.
 ## Stack
 
 - Next.js (App Router) + TypeScript
-- Prisma + SQLite
+- Prisma + Postgres (local dev via Docker, [Neon](https://neon.tech) in production)
 - Discogs public marketplace API (no OAuth — stores connect by Discogs username)
 - Server Actions for auth, settings, sync, and inventory curation
+- Deploys to [Render](https://render.com) as a web service — see `render.yaml` and
+  the Deployment section below
 
 ## Getting started
 
 ```bash
 npm install
+cp .env.example .env          # edit if you're not using the default local Postgres
+docker compose up -d          # starts local Postgres on localhost:5433
 npx prisma migrate dev
+npm run seed                  # optional — creates /store/demo with real synced inventory
 npm run dev
 ```
 
@@ -38,9 +43,12 @@ storefront example only, not meant to be logged into.
 
 ### Environment variables (`.env`)
 
-- `DATABASE_URL` — SQLite file path (defaults to `file:./dev.db`)
+See `.env.example` for the full template. Summary:
+
+- `DATABASE_URL` — Postgres connection string. `docker compose up -d` gives you a
+  working local one out of the box; production uses a Neon connection string instead.
 - `SESSION_SECRET` — random secret used to sign session cookies. **Replace the
-  placeholder value before deploying anywhere real.**
+  placeholder value before deploying anywhere real** (`openssl rand -base64 32`).
 - `NEXT_PUBLIC_BASE_URL` (optional) — absolute base URL used when generating the
   storefront QR code. If unset, it's inferred from the request's `Host` header,
   which is fine for local dev but should be set explicitly in production.
@@ -56,7 +64,7 @@ storefront example only, not meant to be logged into.
   images for the newest items after each sync without blocking the sync response or
   hammering Discogs' rate limit.
 - **Storefront** (`src/app/store/[slug]`) reads only from the local cache — search,
-  sort, and pagination are all local SQLite queries, so public traffic never calls
+  sort, and pagination are all local database queries, so public traffic never calls
   the Discogs API directly.
 - **Item detail pages** (`src/app/store/[slug]/item/[id]`) lazily fetch and cache
   full release details (genres, styles, tracklist, images, notes) the first time an
@@ -64,6 +72,24 @@ storefront example only, not meant to be logged into.
 - **Dashboard** (`src/app/dashboard`) lets a store manage its profile/branding,
   Discogs connection, trigger syncs, generate its QR code, and hide/feature
   individual items without touching the underlying Discogs listings.
+
+## Deployment (Render + Neon)
+
+1. Create a [Neon](https://neon.tech) project and copy its (pooled) connection string.
+2. In [Render](https://render.com), create a new **Blueprint** from this repo — it
+   reads `render.yaml` and provisions the web service automatically.
+3. Set the environment variables Render leaves blank (marked `sync: false` in
+   `render.yaml`): `DATABASE_URL` (the Neon connection string) and
+   `NEXT_PUBLIC_BASE_URL` (your Render service URL or custom domain).
+   `SESSION_SECRET` is generated automatically.
+4. Deploy. The build step runs `prisma migrate deploy` automatically, so the schema
+   is applied on every deploy.
+5. Seed the demo store once, from your own machine, by pointing `DATABASE_URL` at
+   the same Neon database and running `npm run seed` locally — Render's free tier
+   can't run one-off shell jobs, but seeding doesn't need to run on Render itself.
+
+Render's free tier sleeps after 15 minutes of inactivity (cold start on the next
+request); its paid Starter tier removes that entirely if it becomes worth $7/month.
 
 ## Notes
 

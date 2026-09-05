@@ -1,6 +1,6 @@
 -- CreateTable
 CREATE TABLE "Store" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
@@ -12,16 +12,18 @@ CREATE TABLE "Store" (
     "logoUrl" TEXT,
     "description" TEXT,
     "accentColor" TEXT NOT NULL DEFAULT '#2563eb',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    "lastSyncAt" DATETIME,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "lastSyncAt" TIMESTAMP(3),
     "lastSyncStatus" TEXT,
-    "lastSyncError" TEXT
+    "lastSyncError" TEXT,
+
+    CONSTRAINT "Store_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "InventoryItem" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "storeId" TEXT NOT NULL,
     "listingId" BIGINT NOT NULL,
     "releaseId" INTEGER NOT NULL,
@@ -37,7 +39,7 @@ CREATE TABLE "InventoryItem" (
     "country" TEXT,
     "condition" TEXT,
     "sleeveCondition" TEXT,
-    "price" REAL,
+    "price" DOUBLE PRECISION,
     "priceCurrency" TEXT,
     "comments" TEXT,
     "imageUrl" TEXT,
@@ -49,9 +51,10 @@ CREATE TABLE "InventoryItem" (
     "isVisible" BOOLEAN NOT NULL DEFAULT true,
     "isFeatured" BOOLEAN NOT NULL DEFAULT false,
     "rawData" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "InventoryItem_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "InventoryItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -71,3 +74,6 @@ CREATE INDEX "InventoryItem_storeId_isFeatured_idx" ON "InventoryItem"("storeId"
 
 -- CreateIndex
 CREATE UNIQUE INDEX "InventoryItem_storeId_listingId_key" ON "InventoryItem"("storeId", "listingId");
+
+-- AddForeignKey
+ALTER TABLE "InventoryItem" ADD CONSTRAINT "InventoryItem_storeId_fkey" FOREIGN KEY ("storeId") REFERENCES "Store"("id") ON DELETE CASCADE ON UPDATE CASCADE;

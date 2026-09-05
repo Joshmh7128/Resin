@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: resin
+    runtime: node
+    plan: free
+    buildCommand: npm ci --legacy-peer-deps && npx prisma migrate deploy && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Paste the connection string from your Neon project dashboard.
+      # Prefer Neon's "pooled" connection string.
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      # Your Render service's public URL (or custom domain), used when
+      # generating the storefront QR code.
+      - key: NEXT_PUBLIC_BASE_URL
+        sync: false

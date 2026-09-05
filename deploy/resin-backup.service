@@ -1,8 +1,0 @@
-[Unit]
-Description=Backup the Resin SQLite database
-
-[Service]
-Type=oneshot
-User=resin
-Group=resin
-ExecStart=/opt/resin/deploy/backup-db.sh

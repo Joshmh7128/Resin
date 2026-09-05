@@ -16,6 +16,70 @@ export interface SyncResult {
 }
 
 /**
+ * A sync claimed longer ago than this is treated as abandoned. Without this, a
+ * process that dies mid-sync (a deploy, or Render's free tier spinning the
+ * service down) would leave the store stuck on "running" and unable to ever
+ * sync again.
+ */
+const STALE_SYNC_MS = 15 * 60 * 1000;
+
+export function isSyncRunning(
+  store: Pick<Store, "lastSyncStatus" | "syncStartedAt">,
+): boolean {
+  if (store.lastSyncStatus !== "running" || !store.syncStartedAt) return false;
+  return Date.now() - store.syncStartedAt.getTime() < STALE_SYNC_MS;
+}
+
+/**
+ * Claims and starts a sync, returning immediately rather than awaiting it.
+ *
+ * A full sync takes 40-60s, which is well past Render's ~15s request timeout,
+ * so it cannot run inside the request that triggers it. Instead the request
+ * only claims the sync and the work continues detached; the dashboard polls
+ * `lastSyncStatus` to follow along. This depends on running as a long-lived
+ * Node process (`next start`), not a serverless function that would be frozen
+ * once the response is sent.
+ */
+export async function startInventorySync(
+  storeId: string,
+): Promise<{ started: boolean; reason?: string }> {
+  const staleBefore = new Date(Date.now() - STALE_SYNC_MS);
+
+  // Claim atomically: only one caller can flip the row into "running", so a
+  // double-click (or two tabs) can't launch two syncs over the same store.
+  const claim = await prisma.store.updateMany({
+    where: {
+      id: storeId,
+      OR: [
+        { lastSyncStatus: { not: "running" } },
+        { lastSyncStatus: null },
+        { syncStartedAt: null },
+        { syncStartedAt: { lt: staleBefore } },
+      ],
+    },
+    data: {
+      lastSyncStatus: "running",
+      lastSyncError: null,
+      syncStartedAt: new Date(),
+    },
+  });
+
+  if (claim.count === 0) {
+    return { started: false, reason: "A sync is already running for this store." };
+  }
+
+  const store = await prisma.store.findUnique({ where: { id: storeId } });
+  if (!store) return { started: false, reason: "Store not found." };
+
+  void syncStoreInventory(store).catch(() => {
+    // syncStoreInventory records its own failures on the store row; this catch
+    // only stops an unhandled rejection from taking down the process.
+  });
+
+  return { started: true };
+}
+
+/**
  * Fetches the full release (genres, styles, full-size images, notes, tracklist)
  * and caches it on the item. Used both for on-demand detail-page enrichment and
  * for the background thumbnail backfill below.

@@ -23,8 +23,13 @@ model Store {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   lastSyncAt       DateTime?
+  // "running" | "success" | "error". Set to "running" when a background sync is
+  // claimed, so a second sync can't start on top of one already in flight.
   lastSyncStatus   String?
   lastSyncError    String?
+  // When the in-flight sync was claimed. Used to expire a "running" status left
+  // behind by a process that died mid-sync.
+  syncStartedAt    DateTime?
 
   items InventoryItem[]
 

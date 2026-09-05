@@ -1,0 +1,23 @@
+[Unit]
+Description=Resin - Discogs record store storefronts
+After=network.target
+
+[Service]
+Type=simple
+User=resin
+Group=resin
+WorkingDirectory=/opt/resin
+EnvironmentFile=/opt/resin/.env
+Environment=NODE_ENV=production
+ExecStart=/opt/resin/node_modules/.bin/next start -p 3000
+Restart=on-failure
+RestartSec=5
+
+# Basic hardening — the app only needs to read/write its own directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/resin
+
+[Install]
+WantedBy=multi-user.target

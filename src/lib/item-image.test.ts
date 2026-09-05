@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 
-// Mock only the network call; everything else (Prisma, caching) is real, so
-// these tests exercise the actual persistence behaviour against local Postgres.
+// Mock only the network call; everything else (Prisma, queueing, caching) is
+// real, so these tests exercise actual persistence against local Postgres.
 vi.mock("@/lib/discogs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/discogs")>();
   return { ...actual, fetchReleaseDetails: vi.fn() };
@@ -9,7 +9,11 @@ vi.mock("@/lib/discogs", async (importOriginal) => {
 
 import { prisma } from "@/lib/prisma";
 import { fetchReleaseDetails } from "@/lib/discogs";
-import { resolveItemImage } from "@/lib/item-image";
+import {
+  resolveItemImage,
+  __drainImageQueueForTest,
+  __resetImageQueueForTest,
+} from "@/lib/item-image";
 
 const mockFetch = vi.mocked(fetchReleaseDetails);
 
@@ -72,84 +76,34 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  await __drainImageQueueForTest();
+  __resetImageQueueForTest();
   mockFetch.mockReset();
 });
 
 describe("resolveItemImage", () => {
-  it("returns a cached image without calling Discogs", async () => {
+  it("returns a cached image without touching Discogs", async () => {
     const item = await makeItem({ imageUrl: "https://img.discogs.com/cached.jpg" });
 
-    const result = await resolveItemImage(item.id);
-
-    expect(result).toEqual({
+    expect(await resolveItemImage(item.id)).toEqual({
       status: "ready",
       imageUrl: "https://img.discogs.com/cached.jpg",
     });
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("falls back to the listing thumbnail without calling Discogs", async () => {
+  it("falls back to the listing thumbnail without touching Discogs", async () => {
     const item = await makeItem({ thumbUrl: "https://img.discogs.com/thumb.jpg" });
 
-    const result = await resolveItemImage(item.id);
-
-    expect(result).toEqual({
+    expect(await resolveItemImage(item.id)).toEqual({
       status: "ready",
       imageUrl: "https://img.discogs.com/thumb.jpg",
     });
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("fetches the release when nothing is cached, and persists the result", async () => {
-    const item = await makeItem({});
-    mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/fetched.jpg"]));
-
-    const result = await resolveItemImage(item.id);
-
-    expect(result).toEqual({
-      status: "ready",
-      imageUrl: "https://img.discogs.com/fetched.jpg",
-    });
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-
-    const stored = await prisma.inventoryItem.findUniqueOrThrow({ where: { id: item.id } });
-    expect(stored.imageUrl).toBe("https://img.discogs.com/fetched.jpg");
-    expect(stored.genres).toBe(JSON.stringify(["Jazz"]));
-  });
-
-  it("serves the second request from cache instead of refetching", async () => {
-    const item = await makeItem({});
-    mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/once.jpg"]));
-
-    await resolveItemImage(item.id);
-    const second = await resolveItemImage(item.id);
-
-    expect(second).toEqual({ status: "ready", imageUrl: "https://img.discogs.com/once.jpg" });
-    // The whole point of caching: one Discogs call per release, ever.
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("reports 'none' when the release genuinely has no artwork", async () => {
-    const item = await makeItem({});
-    mockFetch.mockResolvedValue(releaseDetails([]));
-
-    const result = await resolveItemImage(item.id);
-
-    expect(result).toEqual({ status: "none" });
-  });
-
-  it("does not refetch a release already known to have no artwork", async () => {
-    // `genres` set with no image is how we record "already looked, found none".
-    const item = await makeItem({ genres: JSON.stringify(["Jazz"]) });
-
-    const result = await resolveItemImage(item.id);
-
-    expect(result).toEqual({ status: "none" });
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it("returns 'pending' when Discogs is too slow, rather than hanging", async () => {
+  it("returns immediately rather than waiting on the Discogs fetch", async () => {
     const item = await makeItem({});
     mockFetch.mockImplementation(
       () =>
@@ -159,43 +113,104 @@ describe("resolveItemImage", () => {
     );
 
     const started = Date.now();
-    const result = await resolveItemImage(item.id, { deadlineMs: 25 });
+    const result = await resolveItemImage(item.id);
     const elapsed = Date.now() - started;
 
     expect(result).toEqual({ status: "pending" });
-    // Must give up quickly — this is what keeps a request under the platform's
-    // ~15s timeout when many images are queued behind the Discogs throttle.
-    expect(elapsed).toBeLessThan(250);
+    // This is the property that keeps requests clear of the platform timeout:
+    // the response must not be coupled to how slow Discogs is.
+    expect(elapsed).toBeLessThan(150);
+
+    await __drainImageQueueForTest();
   });
 
-  it("still caches an image that arrives after the deadline passed", async () => {
+  it("caches the image in the background, so a later request finds it", async () => {
     const item = await makeItem({});
-    mockFetch.mockImplementation(
-      () =>
-        new Promise((resolve) =>
-          setTimeout(() => resolve(releaseDetails(["https://img.discogs.com/late.jpg"])), 100),
-        ),
-    );
+    mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/fetched.jpg"]));
 
-    expect(await resolveItemImage(item.id, { deadlineMs: 10 })).toEqual({ status: "pending" });
+    expect(await resolveItemImage(item.id)).toEqual({ status: "pending" });
+    await __drainImageQueueForTest();
 
-    // The in-flight fetch is deliberately not cancelled, so a retry finds it.
-    await new Promise((r) => setTimeout(r, 250));
-    const retry = await resolveItemImage(item.id);
-    expect(retry).toEqual({ status: "ready", imageUrl: "https://img.discogs.com/late.jpg" });
+    expect(await resolveItemImage(item.id)).toEqual({
+      status: "ready",
+      imageUrl: "https://img.discogs.com/fetched.jpg",
+    });
+
+    const stored = await prisma.inventoryItem.findUniqueOrThrow({ where: { id: item.id } });
+    expect(stored.imageUrl).toBe("https://img.discogs.com/fetched.jpg");
+    expect(stored.genres).toBe(JSON.stringify(["Jazz"]));
   });
 
-  it("returns 'pending' when the release lookup fails", async () => {
+  it("fetches a given release only once, however many times it is asked for", async () => {
     const item = await makeItem({});
-    mockFetch.mockRejectedValue(new Error("Discogs 502"));
+    mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/once.jpg"]));
 
-    const result = await resolveItemImage(item.id);
+    // Simulate several cards on a page all asking at the same moment.
+    await Promise.all([
+      resolveItemImage(item.id),
+      resolveItemImage(item.id),
+      resolveItemImage(item.id),
+    ]);
+    await __drainImageQueueForTest();
+    await resolveItemImage(item.id);
 
-    expect(result).toEqual({ status: "pending" });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports 'none' when the release genuinely has no artwork", async () => {
+    const item = await makeItem({});
+    mockFetch.mockResolvedValue(releaseDetails([]));
+
+    expect(await resolveItemImage(item.id)).toEqual({ status: "pending" });
+    await __drainImageQueueForTest();
+
+    expect(await resolveItemImage(item.id)).toEqual({ status: "none" });
+  });
+
+  it("does not refetch a release already known to have no artwork", async () => {
+    const item = await makeItem({ genres: JSON.stringify(["Jazz"]) });
+
+    expect(await resolveItemImage(item.id)).toEqual({ status: "none" });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("survives a failed lookup and keeps draining the queue", async () => {
+    const failing = await makeItem({});
+    const succeeding = await makeItem({});
+
+    mockFetch
+      .mockRejectedValueOnce(new Error("Discogs 502"))
+      .mockResolvedValue(releaseDetails(["https://img.discogs.com/after-failure.jpg"]));
+
+    await resolveItemImage(failing.id);
+    await resolveItemImage(succeeding.id);
+    await __drainImageQueueForTest();
+
+    // One bad release must not stall everything queued behind it.
+    expect(await resolveItemImage(succeeding.id)).toEqual({
+      status: "ready",
+      imageUrl: "https://img.discogs.com/after-failure.jpg",
+    });
+  });
+
+  it("processes a whole page of items without dropping any", async () => {
+    const items = [];
+    for (let i = 0; i < 12; i += 1) items.push(await makeItem({}));
+    mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/page.jpg"]));
+
+    await Promise.all(items.map((item) => resolveItemImage(item.id)));
+    await __drainImageQueueForTest();
+
+    const resolved = await Promise.all(items.map((item) => resolveItemImage(item.id)));
+    expect(resolved.every((r) => r.status === "ready")).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(12);
   });
 
   it("will not resolve an image for a hidden item", async () => {
-    const item = await makeItem({ imageUrl: "https://img.discogs.com/hidden.jpg", isVisible: false });
+    const item = await makeItem({
+      imageUrl: "https://img.discogs.com/hidden.jpg",
+      isVisible: false,
+    });
 
     expect(await resolveItemImage(item.id)).toEqual({ status: "not-found" });
     expect(mockFetch).not.toHaveBeenCalled();

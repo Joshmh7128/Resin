@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { resolveItemImage } from "@/lib/item-image";
 
 /**
- * Resolves one item's cover image. The storefront calls this for the items on
- * the page that don't have artwork cached yet — one request per item, so no
- * single request can stall long enough to be killed by the platform's request
- * timeout.
+ * Resolves one item's cover image. Returns immediately in every case: either
+ * the cached image, or "pending" while a background worker fetches it. The
+ * request never waits on Discogs, so it can't be killed by a request timeout
+ * no matter how many images a page is waiting on.
  */
 export async function GET(
   _request: Request,

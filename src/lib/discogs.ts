@@ -5,20 +5,58 @@ const USER_AGENT = "ResinRecordStoreDirectory/1.0 +https://github.com/resin-app"
 // Keep comfortably under that with a shared minimum interval between requests.
 let lastRequestAt = 0;
 function throttleInterval(hasToken: boolean) {
-  return hasToken ? 1100 : 2600;
+  // 2800ms is ~21 req/min, leaving headroom under the unauthenticated ceiling
+  // of 25/min. The old 2600ms was close enough to the limit that any drift or
+  // overlapping traffic tipped us over.
+  return hasToken ? 1100 : 2800;
 }
 
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function throttle(hasToken: boolean) {
+/**
+ * Tail of the throttle queue. Every caller chains onto this, so concurrent
+ * callers are spaced out instead of released together.
+ *
+ * A plain "check the clock, then sleep" throttle does NOT survive concurrency:
+ * simultaneous callers all read the same `lastRequestAt`, all sleep the same
+ * amount, and then all fire at once. That burst is what drove us past Discogs'
+ * rate limit, so the spacing has to be serialized through a queue.
+ */
+let throttleTail: Promise<void> = Promise.resolve();
+
+function throttle(hasToken: boolean): Promise<void> {
   const minInterval = throttleInterval(hasToken);
-  const elapsed = Date.now() - lastRequestAt;
-  if (elapsed < minInterval) {
-    await sleep(minInterval - elapsed);
-  }
-  lastRequestAt = Date.now();
+  const slot = throttleTail.then(async () => {
+    const waitFor = lastRequestAt + minInterval - Date.now();
+    if (waitFor > 0) await sleep(waitFor);
+    lastRequestAt = Date.now();
+  });
+  // Keep the chain alive even if a caller's slot rejects.
+  throttleTail = slot.catch(() => {});
+  return slot;
+}
+
+/**
+ * When Discogs rate limits us, every further request in that window will fail
+ * too. Track the cooldown globally so we fail fast instead of queueing up
+ * hundreds of doomed requests behind the throttle.
+ */
+let rateLimitedUntil = 0;
+const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 60_000;
+
+export function isRateLimited(): boolean {
+  return Date.now() < rateLimitedUntil;
+}
+
+export function rateLimitCooldownMs(): number {
+  return Math.max(0, rateLimitedUntil - Date.now());
+}
+
+/** Exposed so tests can reset module state between cases. */
+export function __resetRateLimitForTest() {
+  rateLimitedUntil = 0;
 }
 
 export class DiscogsError extends Error {
@@ -31,6 +69,15 @@ export class DiscogsError extends Error {
 }
 
 async function discogsFetch(path: string, token?: string | null): Promise<unknown> {
+  // Fail fast while we're in a rate-limit cooldown. Without this, every queued
+  // request still waits its turn on the throttle only to be rejected anyway.
+  if (isRateLimited()) {
+    throw new DiscogsError(
+      `Rate limited by Discogs; retrying in ${Math.ceil(rateLimitCooldownMs() / 1000)}s`,
+      429,
+    );
+  }
+
   const hasToken = Boolean(token);
   await throttle(hasToken);
 
@@ -41,9 +88,19 @@ async function discogsFetch(path: string, token?: string | null): Promise<unknow
   const res = await fetch(url, { headers, cache: "no-store" });
 
   if (res.status === 429) {
-    // Rate limited — back off once and retry a single time.
-    await sleep(5000);
-    return discogsFetch(path, token);
+    // Start a global cooldown rather than retrying here. The previous version
+    // recursed with no attempt limit, so a sustained 429 became an unbounded
+    // retry loop that held requests open until they timed out.
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const cooldown =
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : DEFAULT_RATE_LIMIT_COOLDOWN_MS;
+    rateLimitedUntil = Date.now() + cooldown;
+    throw new DiscogsError(
+      `Rate limited by Discogs; retrying in ${Math.ceil(cooldown / 1000)}s`,
+      429,
+    );
   }
 
   if (res.status === 404) {

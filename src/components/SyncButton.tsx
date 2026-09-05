@@ -129,6 +129,8 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
             it. Your shop also sleeps after 15 minutes with no visitors, which pauses
             loading. It picks up again automatically the next time anyone views your
             storefront, or when you press Sync. Nothing already loaded is lost.
+            Working within these limits is what keeps Resin free to run, and we
+            appreciate your patience.
           </p>
         </div>
       )}

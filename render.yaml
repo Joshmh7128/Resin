@@ -6,10 +6,14 @@ services:
     # Deploy from master. Without this Render follows the repo default branch,
     # which is easy to leave behind and quietly ship stale code.
     branch: master
+    # `--include=dev` is required: NODE_ENV=production (set below, and needed at
+    # runtime for secure cookies) makes npm skip devDependencies, but the build
+    # needs them — Tailwind, its PostCSS plugin, and TypeScript all live there.
+    #
     # `prisma generate` must be explicit: npm 11 blocks dependency postinstall
     # scripts by default, so Prisma's own postinstall no longer generates the
     # client and the build would fail on a stub.
-    buildCommand: npm ci && npx prisma generate && npx prisma migrate deploy && npm run build
+    buildCommand: npm ci --include=dev && npx prisma generate && npx prisma migrate deploy && npm run build
     startCommand: npm run start
     envVars:
       - key: NODE_ENV

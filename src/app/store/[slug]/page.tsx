@@ -1,11 +1,11 @@
 import Link from "next/link";
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatPrice, formatRelativeTime } from "@/lib/format";
 import { SearchForm } from "@/components/SearchForm";
 import { Pagination } from "@/components/Pagination";
 import { SortSelect } from "@/components/SortSelect";
+import { ItemImage } from "@/components/ItemImage";
 import type { Prisma } from "@prisma/client";
 
 const SORT_OPTIONS = {
@@ -167,20 +167,12 @@ function ItemCard({
       className="group overflow-hidden rounded-lg border border-neutral-200 bg-white transition hover:shadow-md"
     >
       <div className="aspect-square w-full overflow-hidden bg-neutral-100">
-        {image ? (
-          <Image
-            src={image}
-            alt={`${item.artist} - ${item.title}`}
-            width={300}
-            height={300}
-            unoptimized
-            className="h-full w-full object-cover transition group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">
-            No image
-          </div>
-        )}
+        <ItemImage
+          itemId={item.id}
+          cachedUrl={image}
+          alt={`${item.artist} - ${item.title}`}
+          className="h-full w-full object-cover transition group-hover:scale-105"
+        />
       </div>
       <div className={compact ? "p-2" : "p-3"}>
         <p className="truncate text-sm font-medium text-neutral-900">{item.title}</p>

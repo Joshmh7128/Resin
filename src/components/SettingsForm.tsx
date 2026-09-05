@@ -59,7 +59,7 @@ export function SettingsForm({ store }: { store: SafeStore }) {
         <Field
           label="Discogs personal access token"
           htmlFor="discogsToken"
-          hint="Optional — raises API rate limits. Generate one in Discogs Settings → Developers."
+          hint="Optional. Raises your Discogs API rate limit. Generate one under Settings, then Developers, on Discogs."
         >
           <input
             id="discogsToken"

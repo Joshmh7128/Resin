@@ -6,6 +6,15 @@ import { signupAction, type FormState } from "@/lib/actions";
 
 const initialState: FormState = {};
 
+/**
+ * Host shown in front of the store slug, so the field reads as the real
+ * storefront address rather than a bare path. NEXT_PUBLIC_BASE_URL is inlined
+ * at build time; if it isn't set we fall back to just the path.
+ */
+const storefrontPrefix = (process.env.NEXT_PUBLIC_BASE_URL ?? "")
+  .replace(/^https?:\/\//, "")
+  .replace(/\/+$/, "");
+
 function slugify(value: string): string {
   return value
     .toLowerCase()
@@ -57,20 +66,27 @@ export function SignupForm() {
           Store URL
         </label>
         <div className="mt-1 flex items-center rounded-md border border-neutral-300 focus-within:border-neutral-500">
-          <span className="pl-3 text-sm text-neutral-400">/store/</span>
+          {/* shrink-0 and nowrap stop the prefix wrapping onto its own line. */}
+          <span className="shrink-0 whitespace-nowrap pl-3 text-sm text-neutral-400">
+            {storefrontPrefix}/store/
+          </span>
           <input
             id="slug"
             name="slug"
             type="text"
             required
             value={slug}
+            placeholder="blue-note-records"
             onChange={(e) => {
               setSlugTouched(true);
               setSlug(slugify(e.target.value));
             }}
-            className="w-full rounded-md px-2 py-2 text-sm focus:outline-none"
+            className="w-full min-w-0 rounded-md px-2 py-2 text-sm focus:outline-none"
           />
         </div>
+        <p className="mt-1 text-xs text-neutral-500">
+          This is the address customers will scan or visit.
+        </p>
       </div>
       <div>
         <label htmlFor="discogsUsername" className="block text-sm font-medium text-neutral-700">
@@ -81,10 +97,12 @@ export function SignupForm() {
           name="discogsUsername"
           type="text"
           required
+          placeholder="waxidermy"
           className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-500 focus:outline-none"
         />
         <p className="mt-1 text-xs text-neutral-500">
-          Your Discogs username — we&apos;ll pull your public marketplace listings.
+          The username from your Discogs seller account. We&apos;ll pull your public
+          marketplace listings from it.
         </p>
       </div>
       <div>

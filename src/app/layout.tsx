@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Resin — Discogs Record Store Directories",
+  title: "Resin: Discogs Record Store Directories",
   description:
-    "Browse record store inventory pulled live from Discogs — searchable, paginated, and mobile friendly.",
+    "Browse record store inventory pulled live from Discogs. Searchable, paginated, and mobile friendly.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

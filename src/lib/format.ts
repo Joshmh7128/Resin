@@ -12,7 +12,7 @@ const NAMED_ENTITIES: Record<string, string> = {
 
 /**
  * Discogs stores user-entered comments/notes with HTML entities encoded.
- * We only decode entities into plain text — we never render the string as
+ * We only decode entities into plain text. We never render the string as
  * HTML, since it originates from untrusted (seller-entered) content.
  */
 export function decodeHtmlEntities(text: string): string {

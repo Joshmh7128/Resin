@@ -49,7 +49,7 @@ export default async function DashboardPage() {
         </p>
         <p className="mt-1 text-sm text-neutral-500">
           Customers see the last-synced time on your storefront and are told to ask a staff
-          member to sync if they can&apos;t find something — keep it current with a quick sync
+          member to sync if they can&apos;t find something. Keep it current with a quick sync
           during a slow moment.
         </p>
         {store.lastSyncStatus === "error" && store.lastSyncError && (
@@ -65,7 +65,7 @@ export default async function DashboardPage() {
       <div>
         <h2 className="mb-3 text-lg font-semibold text-neutral-900">Your storefront QR code</h2>
         <p className="mb-4 text-sm text-neutral-600">
-          Print this and put it on the counter or in crates — customers scan it to browse your
+          Print this and put it on the counter or in crates. Customers scan it to browse your
           inventory on their phone.
         </p>
         <StoreQrCode slug={store.slug} />

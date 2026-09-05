@@ -42,7 +42,7 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
 
   // Poll while either the listing sync or the cover-art fill is in progress.
   // Artwork keeps loading after the sync itself finishes, so the two are
-  // tracked separately — this also resumes correctly after a page reload.
+  // tracked separately. This also resumes correctly after a page reload.
   const shouldPoll = running || images.warming;
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
         setImages(status.images);
         if (running && !status.running) finish(status);
       } catch {
-        // Transient failure (a redeploy, a dropped connection) — keep polling
+        // Transient failure (a redeploy, a dropped connection), so keep polling
         // rather than reporting a failure we can't actually confirm.
       }
     }, POLL_INTERVAL_MS);
@@ -99,16 +99,17 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
 
       {running && (
         <p className="text-sm text-neutral-500">
-          This runs in the background and takes a minute or two — you can leave this page.
+          This runs in the background and takes a minute or two. You can leave this page.
         </p>
       )}
 
-      {images.warming && (
+      {images.remaining > 0 && (
         <div className="max-w-sm space-y-1 pt-1">
           <p className="text-sm text-neutral-500">
-            Loading cover art — {images.resolved.toLocaleString()} of{" "}
-            {images.total.toLocaleString()} done ({images.remaining.toLocaleString()} to go).
-            Customers browsing the shop are served first, so this may pause.
+            {images.warming ? "Loading cover art:" : "Cover art paused:"}{" "}
+            {images.resolved.toLocaleString()} of {images.total.toLocaleString()} done,{" "}
+            {images.remaining.toLocaleString()} to go.
+            {images.warming && " Customers browsing the shop are served first, so this may slow down."}
           </p>
           <div
             className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200"
@@ -123,6 +124,12 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
               style={{ width: `${percent}%` }}
             />
           </div>
+          <p className="text-xs text-neutral-400">
+            Cover art loads gradually because Discogs limits how fast we can ask for
+            it. Your shop also sleeps after 15 minutes with no visitors, which pauses
+            loading. It picks up again automatically the next time anyone views your
+            storefront, or when you press Sync. Nothing already loaded is lost.
+          </p>
         </div>
       )}
 

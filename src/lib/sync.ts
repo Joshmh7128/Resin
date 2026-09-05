@@ -78,7 +78,7 @@ export async function startInventorySync(
 /*
  * Cover art is not fetched inline here. Discogs' inventory endpoint omits
  * artwork, so each image costs a separate release lookup against a throttle of
- * roughly one request every 2.8s — far too slow to do while a sync runs. Once
+ * roughly one request every 2.8s, far too slow to do while a sync runs. Once
  * the listings are in, the store is handed to the image warmer, which fills in
  * artwork in the background and always yields to customers browsing the shop.
  * See `src/lib/item-image.ts`.

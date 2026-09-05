@@ -5,7 +5,7 @@ import type { InventoryItem } from "@prisma/client";
 export type ImageResolution =
   /** An image is cached and ready to display. */
   | { status: "ready"; imageUrl: string }
-  /** The release genuinely has no artwork — don't ask again. */
+  /** The release genuinely has no artwork, so don't ask again. */
   | { status: "none" }
   /** Queued for fetching; ask again shortly. */
   | { status: "pending" }
@@ -39,7 +39,7 @@ export async function enrichItemFromRelease(
     data: {
       genres: JSON.stringify(details.genres),
       styles: JSON.stringify(details.styles),
-      // We store the Discogs CDN URL, never the image bytes — a few hundred
+      // We store the Discogs CDN URL, never the image bytes, which is a few hundred
       // bytes per item, and it disappears with the row when a listing sells.
       imageUrl: details.images[0] ?? item.thumbUrl,
       rawData: JSON.stringify({
@@ -59,7 +59,7 @@ export async function enrichItemFromRelease(
  * `priority` holds items a customer is looking at right now; `warmingStores`
  * holds stores being filled in ahead of time. Priority always wins, so browsing
  * never queues behind a warm that may have thousands of items left to do. Both
- * tiers write to the same cache, so a page view also advances the warm — an item
+ * tiers write to the same cache, so a page view also advances the warm. An item
  * fetched on demand is simply no longer outstanding.
  *
  * Warming is tracked as a set of store ids rather than a list of item ids: the
@@ -101,7 +101,7 @@ async function nextWarmingItem(): Promise<string | null> {
     const item = await prisma.inventoryItem.findFirst({
       where: { storeId, isVisible: true, imageUrl: null, genres: null },
       select: { id: true },
-      // Newest listings first — most likely to be what someone browses. Uses
+      // Newest listings first, most likely to be what someone browses. Uses
       // `createdAt` because caching artwork bumps `updatedAt`, which would make
       // this ordering shift as the warm progresses.
       orderBy: { createdAt: "desc" },
@@ -166,7 +166,7 @@ async function runWorker(): Promise<void> {
 
 /**
  * Returns an item's cover image if we have it, and otherwise queues it at
- * priority. Always returns promptly — it never waits on Discogs.
+ * priority. Always returns promptly, and never waits on Discogs.
  */
 export async function resolveItemImage(itemId: string): Promise<ImageResolution> {
   const item = await prisma.inventoryItem.findFirst({
@@ -187,7 +187,7 @@ export async function resolveItemImage(itemId: string): Promise<ImageResolution>
 
   // Someone is browsing a store that still has unresolved artwork, so make sure
   // the background fill is running too. Warming otherwise only starts after a
-  // sync, and it lives in memory — so a restart or an idle spin-down would
+  // sync, and it lives in memory, so a restart or an idle spin-down would
   // leave it stopped until the owner happened to sync again. This makes any
   // visit resume it. It's idempotent: already-warming stores are a no-op, and
   // the warmer always yields to the priority queue, so the visitor's own images

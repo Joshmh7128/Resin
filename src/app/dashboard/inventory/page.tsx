@@ -89,7 +89,9 @@ export default async function InventoryPage({
                       <p className="text-neutral-500">{item.artist}</p>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-neutral-600">{item.condition ?? "—"}</td>
+                  <td className="px-4 py-3 text-neutral-600">
+                    {item.condition ?? "Not listed"}
+                  </td>
                   <td className="px-4 py-3 text-neutral-600">
                     {formatPrice(item.price, item.priceCurrency)}
                   </td>

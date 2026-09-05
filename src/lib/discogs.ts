@@ -3,7 +3,7 @@ const USER_AGENT = "ResinRecordStoreDirectory/1.0 +https://github.com/resin-app"
 
 /**
  * App-level Discogs credentials. Discogs accepts a consumer key/secret directly
- * for reading public data, which is all we do — no per-user OAuth flow needed —
+ * for reading public data, which is all we do (no per-user OAuth flow needed),
  * and it raises the ceiling from 25 to 60 requests per minute.
  *
  * Note the limit is per source IP, not per credential, so this is a 2.4x lift

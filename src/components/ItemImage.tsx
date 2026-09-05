@@ -17,7 +17,7 @@ type State =
   | { kind: "loading" }
   /** The server confirmed this release has no artwork. */
   | { kind: "none" }
-  /** We stopped polling before getting an answer — not the same as "no image". */
+  /** We stopped polling before getting an answer, which is not the same as "no image". */
   | { kind: "gave-up" };
 
 /**
@@ -25,7 +25,7 @@ type State =
  *
  * Most items arrive from Discogs' inventory endpoint without artwork, and
  * fetching every release up front is far too slow to do during a sync. So the
- * image for an item is resolved only when that item is actually rendered —
+ * image for an item is resolved only when that item is actually rendered,
  * meaning only the page being looked at costs any Discogs requests.
  */
 export function ItemImage({
@@ -73,12 +73,12 @@ export function ItemImage({
         // Fall through to the retry below.
       }
 
-      // "pending" means it's queued but not fetched yet — keep checking back.
+      // "pending" means it's queued but not fetched yet, so keep checking back.
       if (!cancelled && n < MAX_ATTEMPTS) {
         timer = setTimeout(() => void attempt(n + 1), RETRY_INTERVAL_MS);
       } else if (!cancelled) {
         // Running out of patience is not evidence that there's no artwork, so
-        // don't claim there is none — just stop asking.
+        // don't claim there is none. Just stop asking.
         setState({ kind: "gave-up" });
       }
     }

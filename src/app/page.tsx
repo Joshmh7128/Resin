@@ -44,8 +44,8 @@ export default async function HomePage() {
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-neutral-600">
             Resin connects to your Discogs seller inventory and gives you a searchable,
-            paginated storefront page — perfect for a QR code on the counter so
-            customers can browse your crates from their phone.
+            paginated storefront page. Put a QR code on the counter and customers
+            can browse your crates from their phone.
           </p>
           <div className="mt-8 flex justify-center gap-4">
             <Link
@@ -77,7 +77,7 @@ export default async function HomePage() {
             />
             <Feature
               title="Scan to browse"
-              body="Every store gets a QR code linking straight to its storefront — print it for the shop counter or crates."
+              body="Every store gets a QR code linking straight to its storefront. Print it for the shop counter or crates."
             />
             <Feature
               title="You stay in control"

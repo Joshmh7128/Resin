@@ -1,5 +1,6 @@
 import { requireStore } from "@/lib/auth";
 import { SettingsForm } from "@/components/SettingsForm";
+import { ShopDetailsForm } from "@/components/ShopDetailsForm";
 import { PasswordForm } from "@/components/PasswordForm";
 
 export default async function SettingsPage() {
@@ -16,6 +17,14 @@ export default async function SettingsPage() {
 
       <div className="rounded-lg border border-neutral-200 bg-white p-6">
         <SettingsForm store={store} />
+      </div>
+
+      <div className="rounded-lg border border-neutral-200 bg-white p-6">
+        <h2 className="mb-1 text-lg font-semibold text-neutral-900">Shop details</h2>
+        <p className="mb-4 text-sm text-neutral-600">
+          Address, opening hours and links, shown to customers on your storefront.
+        </p>
+        <ShopDetailsForm store={store} />
       </div>
 
       <div className="rounded-lg border border-neutral-200 bg-white p-6">

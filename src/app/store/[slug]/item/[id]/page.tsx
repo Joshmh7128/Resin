@@ -1,6 +1,8 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import { itemMetadata } from "@/lib/metadata";
 import { prisma } from "@/lib/prisma";
 import { formatPrice, decodeHtmlEntities } from "@/lib/format";
 import { enrichItemFromRelease } from "@/lib/item-image";
@@ -22,6 +24,15 @@ function safeParseArray(value: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string; id: string }>;
+}): Promise<Metadata> {
+  const { slug, id } = await params;
+  return itemMetadata(slug, id);
 }
 
 export default async function ItemDetailPage({

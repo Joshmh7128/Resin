@@ -14,6 +14,7 @@ import {
   loginSchema,
   settingsSchema,
   changePasswordSchema,
+  shopDetailsSchema,
 } from "@/lib/validation";
 
 export interface FormState {
@@ -234,4 +235,100 @@ export async function toggleItemFeaturedAction(itemId: string): Promise<void> {
   });
   revalidatePath("/dashboard/inventory");
   revalidatePath(`/store/${store.slug}`);
+}
+
+export type BulkItemAction = "show" | "hide" | "feature" | "unfeature";
+
+const BULK_ACTION_DATA: Record<BulkItemAction, { isVisible?: boolean; isFeatured?: boolean }> = {
+  show: { isVisible: true },
+  hide: { isVisible: false },
+  feature: { isFeatured: true },
+  unfeature: { isFeatured: false },
+};
+
+/**
+ * Applies one change to many items at once. Managing a 1,500 item catalogue a
+ * click at a time isn't realistic, and Discogs' own inventory tools offer bulk
+ * changes.
+ */
+export async function bulkUpdateItemsAction(
+  itemIds: string[],
+  action: BulkItemAction,
+): Promise<FormState> {
+  const store = await requireStore();
+
+  const data = BULK_ACTION_DATA[action];
+  if (!data) return { error: "Unknown action" };
+  if (itemIds.length === 0) return { error: "No items selected" };
+
+  // Scoped to this store, so a crafted id list can't touch another store's items.
+  const result = await prisma.inventoryItem.updateMany({
+    where: { id: { in: itemIds }, storeId: store.id },
+    data,
+  });
+
+  revalidatePath("/dashboard/inventory");
+  revalidatePath(`/store/${store.slug}`);
+
+  const verb =
+    action === "show"
+      ? "shown"
+      : action === "hide"
+        ? "hidden"
+        : action === "feature"
+          ? "featured"
+          : "unfeatured";
+  return {
+    success: `${result.count} item${result.count === 1 ? "" : "s"} ${verb}`,
+  };
+}
+
+export async function updateShopDetailsAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const store = await requireStore();
+
+  const parsed = shopDetailsSchema.safeParse({
+    logoUrl: formData.get("logoUrl") ?? "",
+    addressLine: formData.get("addressLine") ?? "",
+    city: formData.get("city") ?? "",
+    postcode: formData.get("postcode") ?? "",
+    country: formData.get("country") ?? "",
+    phone: formData.get("phone") ?? "",
+    openingHours: formData.get("openingHours") ?? "",
+    websiteUrl: formData.get("websiteUrl") ?? "",
+    instagramUrl: formData.get("instagramUrl") ?? "",
+    facebookUrl: formData.get("facebookUrl") ?? "",
+    bandcampUrl: formData.get("bandcampUrl") ?? "",
+  });
+
+  if (!parsed.success) {
+    return { error: firstIssueMessage(parsed.error.issues) };
+  }
+
+  // Store blanks as null so the storefront can simply skip empty details.
+  const blankToNull = (value?: string) => (value && value.trim() !== "" ? value.trim() : null);
+  const d = parsed.data;
+
+  await prisma.store.update({
+    where: { id: store.id },
+    data: {
+      logoUrl: blankToNull(d.logoUrl),
+      addressLine: blankToNull(d.addressLine),
+      city: blankToNull(d.city),
+      postcode: blankToNull(d.postcode),
+      country: blankToNull(d.country),
+      phone: blankToNull(d.phone),
+      openingHours: blankToNull(d.openingHours),
+      websiteUrl: blankToNull(d.websiteUrl),
+      instagramUrl: blankToNull(d.instagramUrl),
+      facebookUrl: blankToNull(d.facebookUrl),
+      bandcampUrl: blankToNull(d.bandcampUrl),
+    },
+  });
+
+  revalidatePath("/dashboard/settings");
+  revalidatePath(`/store/${store.slug}`);
+  return { success: "Shop details saved" };
 }

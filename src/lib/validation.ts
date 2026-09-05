@@ -32,6 +32,43 @@ export const settingsSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #2563eb"),
 });
 
+/** Blank is always allowed: every shop detail is optional. */
+const optionalText = (max: number) => z.string().max(max).optional().or(z.literal(""));
+
+/**
+ * Only http(s) URLs are accepted. These values are rendered as links on a public
+ * page, so allowing arbitrary schemes would let a store put `javascript:` behind
+ * a link customers click.
+ */
+const optionalUrl = (label: string) =>
+  z
+    .union([
+      z.literal(""),
+      z
+        .string()
+        .trim()
+        .url(`Enter a full ${label} address, starting with https://`)
+        .refine(
+          (value) => /^https?:\/\//i.test(value),
+          `Enter a full ${label} address, starting with https://`,
+        ),
+    ])
+    .optional();
+
+export const shopDetailsSchema = z.object({
+  logoUrl: optionalUrl("logo image"),
+  addressLine: optionalText(200),
+  city: optionalText(100),
+  postcode: optionalText(20),
+  country: optionalText(100),
+  phone: optionalText(40),
+  openingHours: optionalText(500),
+  websiteUrl: optionalUrl("website"),
+  instagramUrl: optionalUrl("Instagram"),
+  facebookUrl: optionalUrl("Facebook"),
+  bandcampUrl: optionalUrl("Bandcamp"),
+});
+
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, "Current password is required"),

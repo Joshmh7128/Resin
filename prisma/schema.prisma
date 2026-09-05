@@ -28,6 +28,23 @@ model Store {
   logoUrl          String?
   description      String?
   accentColor      String   @default("#2563eb")
+
+  // Shop details. A record store is a physical place, so the storefront needs
+  // to be able to say where it is and when it's open. All optional: a store
+  // that only sells online simply leaves them blank and they aren't rendered.
+  addressLine      String?
+  city             String?
+  postcode         String?
+  country          String?
+  phone            String?
+  /** Free text, one line per day. Kept unstructured so shops can write "Closed
+      Mondays", "Late night Thursdays" and the like without fighting a form. */
+  openingHours     String?
+  websiteUrl       String?
+  instagramUrl     String?
+  facebookUrl      String?
+  bandcampUrl      String?
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   lastSyncAt       DateTime?

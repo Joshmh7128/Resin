@@ -3,7 +3,10 @@ services:
     name: resin
     runtime: node
     plan: free
-    buildCommand: npm ci --legacy-peer-deps && npx prisma migrate deploy && npm run build
+    # `prisma generate` must be explicit: npm 11 blocks dependency postinstall
+    # scripts by default, so Prisma's own postinstall no longer generates the
+    # client and the build would fail on a stub.
+    buildCommand: npm ci && npx prisma generate && npx prisma migrate deploy && npm run build
     startCommand: npm run start
     envVars:
       - key: NODE_ENV

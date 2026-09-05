@@ -3,12 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { formatRelativeTime } from "@/lib/format";
 import { SyncButton } from "@/components/SyncButton";
 import { StoreQrCode } from "@/components/StoreQrCode";
+import { getSyncStatusAction } from "@/lib/actions";
 
 export default async function DashboardPage() {
   const store = await requireStore();
-  const [itemCount, visibleCount] = await Promise.all([
+  const [itemCount, visibleCount, syncStatus] = await Promise.all([
     prisma.inventoryItem.count({ where: { storeId: store.id } }),
     prisma.inventoryItem.count({ where: { storeId: store.id, isVisible: true } }),
+    getSyncStatusAction(),
   ]);
 
   return (
@@ -56,7 +58,7 @@ export default async function DashboardPage() {
           </p>
         )}
         <div className="mt-4">
-          <SyncButton />
+          <SyncButton initialStatus={syncStatus} />
         </div>
       </div>
 

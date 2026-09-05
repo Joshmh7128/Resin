@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { setSessionCookie, clearSessionCookie } from "@/lib/session";
 import { requireStore } from "@/lib/auth";
-import { syncStoreInventory } from "@/lib/sync";
+import { startInventorySync, isSyncRunning } from "@/lib/sync";
 import { verifyDiscogsUsername } from "@/lib/discogs";
 import {
   signupSchema,
@@ -165,20 +165,45 @@ export async function changePasswordAction(
   return { success: "Password updated" };
 }
 
+export interface SyncStatus {
+  running: boolean;
+  status: string | null;
+  lastSyncAt: string | null;
+  error: string | null;
+  totalItems: number;
+  visibleItems: number;
+}
+
+/**
+ * Starts a sync and returns straight away. The sync itself takes 40-60s, which
+ * exceeds Render's ~15s request timeout, so the client polls
+ * `getSyncStatusAction` instead of holding a request open.
+ */
 export async function syncInventoryAction(): Promise<FormState> {
-  const safeStore = await requireStore();
-  const store = await prisma.store.findUniqueOrThrow({ where: { id: safeStore.id } });
-  const result = await syncStoreInventory(store);
+  const store = await requireStore();
+  const result = await startInventorySync(store.id);
 
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/inventory");
-  revalidatePath(`/store/${store.slug}`);
-
-  if (!result.ok) {
-    return { error: result.error ?? "Sync failed" };
+  if (!result.started) {
+    return { error: result.reason ?? "Could not start sync" };
   }
+  return { success: "Sync started" };
+}
+
+export async function getSyncStatusAction(): Promise<SyncStatus> {
+  const safeStore = await requireStore();
+  const [store, totalItems, visibleItems] = await Promise.all([
+    prisma.store.findUniqueOrThrow({ where: { id: safeStore.id } }),
+    prisma.inventoryItem.count({ where: { storeId: safeStore.id } }),
+    prisma.inventoryItem.count({ where: { storeId: safeStore.id, isVisible: true } }),
+  ]);
+
   return {
-    success: `Synced ${result.total} listing${result.total === 1 ? "" : "s"} (${result.added} new, ${result.removed} removed)`,
+    running: isSyncRunning(store),
+    status: store.lastSyncStatus,
+    lastSyncAt: store.lastSyncAt?.toISOString() ?? null,
+    error: store.lastSyncError,
+    totalItems,
+    visibleItems,
   };
 }
 

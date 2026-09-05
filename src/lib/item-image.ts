@@ -171,7 +171,7 @@ async function runWorker(): Promise<void> {
 export async function resolveItemImage(itemId: string): Promise<ImageResolution> {
   const item = await prisma.inventoryItem.findFirst({
     where: { id: itemId, isVisible: true },
-    select: { id: true, imageUrl: true, thumbUrl: true, genres: true },
+    select: { id: true, storeId: true, imageUrl: true, thumbUrl: true, genres: true },
   });
 
   if (!item) return { status: "not-found" };
@@ -184,6 +184,16 @@ export async function resolveItemImage(itemId: string): Promise<ImageResolution>
   if (item.genres !== null) return { status: "none" };
 
   enqueuePriority(item.id);
+
+  // Someone is browsing a store that still has unresolved artwork, so make sure
+  // the background fill is running too. Warming otherwise only starts after a
+  // sync, and it lives in memory — so a restart or an idle spin-down would
+  // leave it stopped until the owner happened to sync again. This makes any
+  // visit resume it. It's idempotent: already-warming stores are a no-op, and
+  // the warmer always yields to the priority queue, so the visitor's own images
+  // are unaffected.
+  startWarmingStore(item.storeId);
+
   return { status: "pending" };
 }
 

@@ -12,6 +12,7 @@ import { fetchReleaseDetails } from "@/lib/discogs";
 import {
   resolveItemImage,
   startWarmingStore,
+  isWarmingStore,
   getImageProgress,
   __drainImageQueueForTest,
   __resetImageQueueForTest,
@@ -266,23 +267,59 @@ describe("background warming", () => {
     expect(position).toBeLessThan(backlog.length);
   });
 
-  it("counts on-demand fetches toward warm progress rather than redoing them", async () => {
+  it("never fetches the same release twice, whichever path resolved it", async () => {
     const items = [];
     for (let i = 0; i < 4; i += 1) items.push(await makeItem({}));
     mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/shared.jpg"]));
 
-    // Resolve two on demand first.
+    // Resolve two on demand. This also resumes warming, which will pick up the
+    // remaining two — the point being that it must not redo the first two.
     await resolveItemImage(items[0].id);
     await resolveItemImage(items[1].id);
     await __drainImageQueueForTest();
-    const afterOnDemand = mockFetch.mock.calls.length;
-    expect(afterOnDemand).toBe(2);
 
-    // Warming should only pick up what's still outstanding.
+    // Ask again, and warm again, to give duplication every chance to happen.
     startWarmingStore(storeId);
+    await Promise.all(items.map((i) => resolveItemImage(i.id)));
     await __drainImageQueueForTest();
 
-    expect(mockFetch).toHaveBeenCalledTimes(4);
+    // Exactly one Discogs lookup per item, no matter how many times it was
+    // requested or how the work was triggered.
+    expect(mockFetch).toHaveBeenCalledTimes(items.length);
+
+    const resolved = await Promise.all(items.map((i) => resolveItemImage(i.id)));
+    expect(resolved.every((r) => r.status === "ready")).toBe(true);
+  });
+
+  it("resumes warming when a customer views an item, without needing a sync", async () => {
+    const viewed = await makeItem({});
+    const others = [];
+    for (let i = 0; i < 3; i += 1) others.push(await makeItem({}));
+
+    mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/resume.jpg"]));
+
+    // Nothing is warming — this is the state after a restart or an idle
+    // spin-down, where previously only a manual sync would start it again.
+    expect(isWarmingStore(storeId)).toBe(false);
+
+    await resolveItemImage(viewed.id);
+    expect(isWarmingStore(storeId)).toBe(true);
+
+    await __drainImageQueueForTest();
+
+    // The visit should fill in the rest of the store, not just what was on screen.
+    const resolved = await Promise.all(others.map((o) => resolveItemImage(o.id)));
+    expect(resolved.every((r) => r.status === "ready")).toBe(true);
+  });
+
+  it("does not start warming for an item that already has artwork", async () => {
+    const item = await makeItem({ imageUrl: "https://img.discogs.com/have-it.jpg" });
+
+    await resolveItemImage(item.id);
+
+    // A fully resolved store shouldn't be put back to work by ordinary browsing.
+    expect(isWarmingStore(storeId)).toBe(false);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("reports progress that advances as images resolve", async () => {

@@ -1,5 +1,6 @@
 import { requireStore } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { formatRelativeTime } from "@/lib/format";
 import { SyncButton } from "@/components/SyncButton";
 import { StoreQrCode } from "@/components/StoreQrCode";
 
@@ -32,7 +33,8 @@ export default async function DashboardPage() {
         <StatCard label="Visible on storefront" value={visibleCount} />
         <StatCard
           label="Last synced"
-          value={store.lastSyncAt ? store.lastSyncAt.toLocaleString() : "Never"}
+          value={store.lastSyncAt ? formatRelativeTime(store.lastSyncAt) : "Never"}
+          hint={store.lastSyncAt ? store.lastSyncAt.toLocaleString() : undefined}
           small
         />
       </div>
@@ -42,6 +44,11 @@ export default async function DashboardPage() {
         <p className="mt-1 text-sm text-neutral-600">
           Pull the latest listings from your Discogs seller account. Items no longer for sale on
           Discogs are removed automatically.
+        </p>
+        <p className="mt-1 text-sm text-neutral-500">
+          Customers see the last-synced time on your storefront and are told to ask a staff
+          member to sync if they can&apos;t find something — keep it current with a quick sync
+          during a slow moment.
         </p>
         {store.lastSyncStatus === "error" && store.lastSyncError && (
           <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -68,10 +75,12 @@ export default async function DashboardPage() {
 function StatCard({
   label,
   value,
+  hint,
   small,
 }: {
   label: string;
   value: string | number;
+  hint?: string;
   small?: boolean;
 }) {
   return (
@@ -80,6 +89,7 @@ function StatCard({
       <p className={`mt-1 font-bold text-neutral-900 ${small ? "text-base" : "text-3xl"}`}>
         {value}
       </p>
+      {hint && <p className="mt-0.5 text-xs text-neutral-400">{hint}</p>}
     </div>
   );
 }

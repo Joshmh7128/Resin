@@ -10,6 +10,9 @@ export default async function HomePage() {
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <span className="text-lg font-semibold tracking-tight">Resin</span>
           <nav className="flex items-center gap-4 text-sm font-medium">
+            <Link href="/store/demo" className="text-neutral-600 hover:text-neutral-900">
+              View demo
+            </Link>
             {store ? (
               <Link
                 href="/dashboard"
@@ -52,12 +55,18 @@ export default async function HomePage() {
               Set up your store
             </Link>
             <Link
-              href="/login"
+              href="/store/demo"
               className="rounded-md border border-neutral-300 px-6 py-3 text-sm font-semibold text-neutral-900 hover:bg-neutral-100"
             >
-              Log in
+              View live demo
             </Link>
           </div>
+          <p className="mt-4 text-sm text-neutral-500">
+            Already have a store?{" "}
+            <Link href="/login" className="underline">
+              Log in
+            </Link>
+          </p>
         </section>
 
         <section className="border-t border-neutral-200 bg-white">

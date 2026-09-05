@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, formatRelativeTime } from "@/lib/format";
 import { SearchForm } from "@/components/SearchForm";
 import { Pagination } from "@/components/Pagination";
 import { SortSelect } from "@/components/SortSelect";
@@ -87,7 +87,14 @@ export default async function StorefrontPage({
             >
               Discogs
             </a>
+            {store.lastSyncAt && <> · updated {formatRelativeTime(store.lastSyncAt)}</>}
           </p>
+          {store.lastSyncAt && (
+            <p className="mt-1 text-xs text-neutral-400">
+              Don&apos;t see what you&apos;re looking for? Ask a staff member to sync our
+              inventory.
+            </p>
+          )}
         </div>
       </header>
 

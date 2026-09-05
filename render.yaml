@@ -18,9 +18,13 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Paste the connection string from your Neon project dashboard.
-      # Prefer Neon's "pooled" connection string.
+      # Neon's "pooled" connection string (hostname contains -pooler), used by
+      # the app for its normal queries.
       - key: DATABASE_URL
+        sync: false
+      # Neon's direct connection string (no -pooler). Used only for migrations,
+      # which take a session-level advisory lock the pooler cannot hold.
+      - key: DATABASE_URL_UNPOOLED
         sync: false
       - key: SESSION_SECRET
         generateValue: true

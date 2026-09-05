@@ -4,7 +4,15 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Pooled connection, used by the app at runtime.
+  url       = env("DATABASE_URL")
+  // Direct connection, used for migrations only.
+  //
+  // Migrations take a session-level Postgres advisory lock, and Neon's pooled
+  // endpoint (PgBouncer, transaction mode) doesn't hold session state between
+  // statements, so acquiring that lock through it times out. Locally both point
+  // at the same database, since there is no pooler in front of it.
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model Store {

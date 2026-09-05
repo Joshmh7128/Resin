@@ -1,24 +1,84 @@
 const DISCOGS_API = "https://api.discogs.com";
 const USER_AGENT = "ResinRecordStoreDirectory/1.0 +https://github.com/resin-app";
 
+/**
+ * App-level Discogs credentials. Discogs accepts a consumer key/secret directly
+ * for reading public data, which is all we do — no per-user OAuth flow needed —
+ * and it raises the ceiling from 25 to 60 requests per minute.
+ *
+ * Note the limit is per source IP, not per credential, so this is a 2.4x lift
+ * for the whole app rather than an allowance per store.
+ */
+function appCredentials(): { key: string; secret: string } | null {
+  const key = process.env.DISCOGS_CONSUMER_KEY;
+  const secret = process.env.DISCOGS_CONSUMER_SECRET;
+  return key && secret ? { key, secret } : null;
+}
+
+/** Builds the Authorization header, preferring a store's own token if it has one. */
+function authorizationHeader(token?: string | null): string | null {
+  if (token) return `Discogs token=${token}`;
+  const app = appCredentials();
+  if (app) return `Discogs key=${app.key}, secret=${app.secret}`;
+  return null;
+}
+
 // Discogs allows 60 req/min authenticated, 25 req/min unauthenticated.
 // Keep comfortably under that with a shared minimum interval between requests.
 let lastRequestAt = 0;
-function throttleInterval(hasToken: boolean) {
-  return hasToken ? 1100 : 2600;
+function throttleInterval(authenticated: boolean) {
+  // 1100ms is ~54/min against the authenticated ceiling of 60; 2800ms is
+  // ~21/min against the unauthenticated ceiling of 25. Both leave headroom,
+  // since running close to the limit is what tipped us over previously.
+  return authenticated ? 1100 : 2800;
 }
 
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function throttle(hasToken: boolean) {
+/**
+ * Tail of the throttle queue. Every caller chains onto this, so concurrent
+ * callers are spaced out instead of released together.
+ *
+ * A plain "check the clock, then sleep" throttle does NOT survive concurrency:
+ * simultaneous callers all read the same `lastRequestAt`, all sleep the same
+ * amount, and then all fire at once. That burst is what drove us past Discogs'
+ * rate limit, so the spacing has to be serialized through a queue.
+ */
+let throttleTail: Promise<void> = Promise.resolve();
+
+function throttle(hasToken: boolean): Promise<void> {
   const minInterval = throttleInterval(hasToken);
-  const elapsed = Date.now() - lastRequestAt;
-  if (elapsed < minInterval) {
-    await sleep(minInterval - elapsed);
-  }
-  lastRequestAt = Date.now();
+  const slot = throttleTail.then(async () => {
+    const waitFor = lastRequestAt + minInterval - Date.now();
+    if (waitFor > 0) await sleep(waitFor);
+    lastRequestAt = Date.now();
+  });
+  // Keep the chain alive even if a caller's slot rejects.
+  throttleTail = slot.catch(() => {});
+  return slot;
+}
+
+/**
+ * When Discogs rate limits us, every further request in that window will fail
+ * too. Track the cooldown globally so we fail fast instead of queueing up
+ * hundreds of doomed requests behind the throttle.
+ */
+let rateLimitedUntil = 0;
+const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 60_000;
+
+export function isRateLimited(): boolean {
+  return Date.now() < rateLimitedUntil;
+}
+
+export function rateLimitCooldownMs(): number {
+  return Math.max(0, rateLimitedUntil - Date.now());
+}
+
+/** Exposed so tests can reset module state between cases. */
+export function __resetRateLimitForTest() {
+  rateLimitedUntil = 0;
 }
 
 export class DiscogsError extends Error {
@@ -31,19 +91,38 @@ export class DiscogsError extends Error {
 }
 
 async function discogsFetch(path: string, token?: string | null): Promise<unknown> {
-  const hasToken = Boolean(token);
-  await throttle(hasToken);
+  // Fail fast while we're in a rate-limit cooldown. Without this, every queued
+  // request still waits its turn on the throttle only to be rejected anyway.
+  if (isRateLimited()) {
+    throw new DiscogsError(
+      `Rate limited by Discogs; retrying in ${Math.ceil(rateLimitCooldownMs() / 1000)}s`,
+      429,
+    );
+  }
+
+  const authorization = authorizationHeader(token);
+  await throttle(Boolean(authorization));
 
   const url = path.startsWith("http") ? path : `${DISCOGS_API}${path}`;
   const headers: Record<string, string> = { "User-Agent": USER_AGENT };
-  if (token) headers.Authorization = `Discogs token=${token}`;
+  if (authorization) headers.Authorization = authorization;
 
   const res = await fetch(url, { headers, cache: "no-store" });
 
   if (res.status === 429) {
-    // Rate limited — back off once and retry a single time.
-    await sleep(5000);
-    return discogsFetch(path, token);
+    // Start a global cooldown rather than retrying here. The previous version
+    // recursed with no attempt limit, so a sustained 429 became an unbounded
+    // retry loop that held requests open until they timed out.
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const cooldown =
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : DEFAULT_RATE_LIMIT_COOLDOWN_MS;
+    rateLimitedUntil = Date.now() + cooldown;
+    throw new DiscogsError(
+      `Rate limited by Discogs; retrying in ${Math.ceil(cooldown / 1000)}s`,
+      429,
+    );
   }
 
   if (res.status === 404) {

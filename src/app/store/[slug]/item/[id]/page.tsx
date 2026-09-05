@@ -3,7 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatPrice, decodeHtmlEntities } from "@/lib/format";
-import { enrichItemFromRelease } from "@/lib/sync";
+import { enrichItemFromRelease } from "@/lib/item-image";
 
 interface EnrichedDetails {
   genres: string[];

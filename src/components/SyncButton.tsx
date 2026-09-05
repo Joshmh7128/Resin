@@ -9,6 +9,7 @@ const POLL_INTERVAL_MS = 2500;
 export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
   const router = useRouter();
   const [running, setRunning] = useState(initialStatus.running);
+  const [images, setImages] = useState(initialStatus.images);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(
     null,
   );
@@ -22,8 +23,7 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
         setMessage({ type: "error", text: status.error ?? "Sync failed" });
       } else {
         const before = countAtStart.current;
-        const delta =
-          before === null ? null : status.totalItems - before;
+        const delta = before === null ? null : status.totalItems - before;
         const suffix =
           delta === null || delta === 0
             ? ""
@@ -40,20 +40,24 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
     [router],
   );
 
-  // Poll while a sync is in flight. This also covers a sync that was already
-  // running when the page loaded — e.g. after a refresh mid-sync.
+  // Poll while either the listing sync or the cover-art fill is in progress.
+  // Artwork keeps loading after the sync itself finishes, so the two are
+  // tracked separately — this also resumes correctly after a page reload.
+  const shouldPoll = running || images.warming;
+
   useEffect(() => {
-    if (!running) return;
+    if (!shouldPoll) return;
 
     let cancelled = false;
     const timer = setInterval(async () => {
       try {
         const status = await getSyncStatusAction();
         if (cancelled) return;
-        if (!status.running) finish(status);
+        setImages(status.images);
+        if (running && !status.running) finish(status);
       } catch {
         // Transient failure (a redeploy, a dropped connection) — keep polling
-        // rather than reporting a sync failure we can't actually confirm.
+        // rather than reporting a failure we can't actually confirm.
       }
     }, POLL_INTERVAL_MS);
 
@@ -61,7 +65,7 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [running, finish]);
+  }, [shouldPoll, running, finish]);
 
   async function handleClick() {
     setMessage(null);
@@ -80,6 +84,9 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
     setRunning(true);
   }
 
+  const percent =
+    images.total > 0 ? Math.round((images.resolved / images.total) * 100) : 100;
+
   return (
     <div className="space-y-2">
       <button
@@ -89,15 +96,38 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
       >
         {running ? "Syncing from Discogs…" : "Sync inventory now"}
       </button>
+
       {running && (
         <p className="text-sm text-neutral-500">
           This runs in the background and takes a minute or two — you can leave this page.
         </p>
       )}
+
+      {images.warming && (
+        <div className="max-w-sm space-y-1 pt-1">
+          <p className="text-sm text-neutral-500">
+            Loading cover art — {images.resolved.toLocaleString()} of{" "}
+            {images.total.toLocaleString()} done ({images.remaining.toLocaleString()} to go).
+            Customers browsing the shop are served first, so this may pause.
+          </p>
+          <div
+            className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200"
+            role="progressbar"
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Cover art loading progress"
+          >
+            <div
+              className="h-full bg-neutral-900 transition-all duration-500"
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {message && (
-        <p
-          className={`text-sm ${message.type === "error" ? "text-red-600" : "text-green-700"}`}
-        >
+        <p className={`text-sm ${message.type === "error" ? "text-red-600" : "text-green-700"}`}>
           {message.text}
         </p>
       )}

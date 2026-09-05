@@ -1,15 +1,18 @@
 import Link from "next/link";
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatPrice, formatRelativeTime } from "@/lib/format";
 import { SearchForm } from "@/components/SearchForm";
 import { Pagination } from "@/components/Pagination";
 import { SortSelect } from "@/components/SortSelect";
+import { ItemImage } from "@/components/ItemImage";
 import type { Prisma } from "@prisma/client";
 
 const SORT_OPTIONS = {
-  newest: { label: "Recently listed", orderBy: { updatedAt: "desc" } },
+  // Ordered by when we first saw the listing, not `updatedAt`. Caching an
+  // item's cover art counts as an update, so ordering by `updatedAt` made the
+  // grid reshuffle under the customer as artwork loaded in.
+  newest: { label: "Recently listed", orderBy: { createdAt: "desc" } },
   price_asc: { label: "Price: low to high", orderBy: { price: "asc" } },
   price_desc: { label: "Price: high to low", orderBy: { price: "desc" } },
   title_asc: { label: "Title: A–Z", orderBy: { title: "asc" } },
@@ -50,7 +53,7 @@ export default async function StorefrontPage({
     page === 1 && !q
       ? prisma.inventoryItem.findMany({
           where: { storeId: store.id, isVisible: true, isFeatured: true },
-          orderBy: { updatedAt: "desc" },
+          orderBy: { createdAt: "desc" },
           take: 6,
         })
       : Promise.resolve([]),
@@ -167,20 +170,12 @@ function ItemCard({
       className="group overflow-hidden rounded-lg border border-neutral-200 bg-white transition hover:shadow-md"
     >
       <div className="aspect-square w-full overflow-hidden bg-neutral-100">
-        {image ? (
-          <Image
-            src={image}
-            alt={`${item.artist} - ${item.title}`}
-            width={300}
-            height={300}
-            unoptimized
-            className="h-full w-full object-cover transition group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">
-            No image
-          </div>
-        )}
+        <ItemImage
+          itemId={item.id}
+          cachedUrl={image}
+          alt={`${item.artist} - ${item.title}`}
+          className="h-full w-full object-cover transition group-hover:scale-105"
+        />
       </div>
       <div className={compact ? "p-2" : "p-3"}>
         <p className="truncate text-sm font-medium text-neutral-900">{item.title}</p>

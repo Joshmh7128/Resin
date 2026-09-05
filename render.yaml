@@ -21,3 +21,9 @@ services:
       # generating the storefront QR code.
       - key: NEXT_PUBLIC_BASE_URL
         sync: false
+      # Discogs app credentials. Raise the API ceiling from 25 to 60 req/min.
+      # Set these in the Render dashboard — never commit them.
+      - key: DISCOGS_CONSUMER_KEY
+        sync: false
+      - key: DISCOGS_CONSUMER_SECRET
+        sync: false

@@ -22,6 +22,20 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000). Sign up a store with a real Discogs
 username to pull in live inventory.
 
+### Demo store
+
+`prisma/seed.ts` creates a `/store/demo` storefront (linked from the landing page) and
+syncs it against a real Discogs seller account, so a fresh database has something to
+show immediately. It's idempotent — safe to re-run, and skips the sync if the demo
+store already has one. It runs automatically after `prisma migrate reset`, or on demand:
+
+```bash
+npm run seed
+```
+
+The demo store's password is randomly generated and never surfaced — it's a public
+storefront example only, not meant to be logged into.
+
 ### Environment variables (`.env`)
 
 - `DATABASE_URL` — SQLite file path (defaults to `file:./dev.db`)

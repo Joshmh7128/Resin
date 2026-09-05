@@ -3,6 +3,9 @@ services:
     name: resin
     runtime: node
     plan: free
+    # Deploy from master. Without this Render follows the repo default branch,
+    # which is easy to leave behind and quietly ship stale code.
+    branch: master
     # `prisma generate` must be explicit: npm 11 blocks dependency postinstall
     # scripts by default, so Prisma's own postinstall no longer generates the
     # client and the build would fail on a stub.

@@ -1,14 +1,36 @@
 const DISCOGS_API = "https://api.discogs.com";
 const USER_AGENT = "ResinRecordStoreDirectory/1.0 +https://github.com/resin-app";
 
+/**
+ * App-level Discogs credentials. Discogs accepts a consumer key/secret directly
+ * for reading public data, which is all we do — no per-user OAuth flow needed —
+ * and it raises the ceiling from 25 to 60 requests per minute.
+ *
+ * Note the limit is per source IP, not per credential, so this is a 2.4x lift
+ * for the whole app rather than an allowance per store.
+ */
+function appCredentials(): { key: string; secret: string } | null {
+  const key = process.env.DISCOGS_CONSUMER_KEY;
+  const secret = process.env.DISCOGS_CONSUMER_SECRET;
+  return key && secret ? { key, secret } : null;
+}
+
+/** Builds the Authorization header, preferring a store's own token if it has one. */
+function authorizationHeader(token?: string | null): string | null {
+  if (token) return `Discogs token=${token}`;
+  const app = appCredentials();
+  if (app) return `Discogs key=${app.key}, secret=${app.secret}`;
+  return null;
+}
+
 // Discogs allows 60 req/min authenticated, 25 req/min unauthenticated.
 // Keep comfortably under that with a shared minimum interval between requests.
 let lastRequestAt = 0;
-function throttleInterval(hasToken: boolean) {
-  // 2800ms is ~21 req/min, leaving headroom under the unauthenticated ceiling
-  // of 25/min. The old 2600ms was close enough to the limit that any drift or
-  // overlapping traffic tipped us over.
-  return hasToken ? 1100 : 2800;
+function throttleInterval(authenticated: boolean) {
+  // 1100ms is ~54/min against the authenticated ceiling of 60; 2800ms is
+  // ~21/min against the unauthenticated ceiling of 25. Both leave headroom,
+  // since running close to the limit is what tipped us over previously.
+  return authenticated ? 1100 : 2800;
 }
 
 async function sleep(ms: number) {
@@ -78,12 +100,12 @@ async function discogsFetch(path: string, token?: string | null): Promise<unknow
     );
   }
 
-  const hasToken = Boolean(token);
-  await throttle(hasToken);
+  const authorization = authorizationHeader(token);
+  await throttle(Boolean(authorization));
 
   const url = path.startsWith("http") ? path : `${DISCOGS_API}${path}`;
   const headers: Record<string, string> = { "User-Agent": USER_AGENT };
-  if (token) headers.Authorization = `Discogs token=${token}`;
+  if (authorization) headers.Authorization = authorization;
 
   const res = await fetch(url, { headers, cache: "no-store" });
 

@@ -9,7 +9,10 @@ import { ItemImage } from "@/components/ItemImage";
 import type { Prisma } from "@prisma/client";
 
 const SORT_OPTIONS = {
-  newest: { label: "Recently listed", orderBy: { updatedAt: "desc" } },
+  // Ordered by when we first saw the listing, not `updatedAt`. Caching an
+  // item's cover art counts as an update, so ordering by `updatedAt` made the
+  // grid reshuffle under the customer as artwork loaded in.
+  newest: { label: "Recently listed", orderBy: { createdAt: "desc" } },
   price_asc: { label: "Price: low to high", orderBy: { price: "asc" } },
   price_desc: { label: "Price: high to low", orderBy: { price: "desc" } },
   title_asc: { label: "Title: A–Z", orderBy: { title: "asc" } },
@@ -50,7 +53,7 @@ export default async function StorefrontPage({
     page === 1 && !q
       ? prisma.inventoryItem.findMany({
           where: { storeId: store.id, isVisible: true, isFeatured: true },
-          orderBy: { updatedAt: "desc" },
+          orderBy: { createdAt: "desc" },
           take: 6,
         })
       : Promise.resolve([]),

@@ -11,6 +11,8 @@ import { prisma } from "@/lib/prisma";
 import { fetchReleaseDetails } from "@/lib/discogs";
 import {
   resolveItemImage,
+  startWarmingStore,
+  getImageProgress,
   __drainImageQueueForTest,
   __resetImageQueueForTest,
 } from "@/lib/item-image";
@@ -218,6 +220,123 @@ describe("resolveItemImage", () => {
 
   it("returns 'not-found' for an unknown item", async () => {
     expect(await resolveItemImage("does-not-exist")).toEqual({ status: "not-found" });
+  });
+});
+
+describe("background warming", () => {
+  it("fills in every missing image for a store", async () => {
+    const items = [];
+    for (let i = 0; i < 5; i += 1) items.push(await makeItem({}));
+    mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/warm.jpg"]));
+
+    startWarmingStore(storeId);
+    await __drainImageQueueForTest();
+
+    const resolved = await Promise.all(items.map((i) => resolveItemImage(i.id)));
+    expect(resolved.every((r) => r.status === "ready")).toBe(true);
+  });
+
+  it("serves a customer's request ahead of the warm backlog", async () => {
+    // A backlog the warmer will work through slowly...
+    const backlog = [];
+    for (let i = 0; i < 6; i += 1) backlog.push(await makeItem({}));
+    // ...and the item a customer is actually looking at.
+    const wanted = await makeItem({});
+
+    const fetchOrder: number[] = [];
+    mockFetch.mockImplementation(async (releaseId: number) => {
+      fetchOrder.push(releaseId);
+      return releaseDetails(["https://img.discogs.com/x.jpg"]);
+    });
+
+    // Give the warmer a head start, then have a customer ask for `wanted`.
+    startWarmingStore(storeId);
+    await new Promise((r) => setTimeout(r, 20));
+    await resolveItemImage(wanted.id);
+
+    await __drainImageQueueForTest();
+
+    const wantedRow = await prisma.inventoryItem.findUniqueOrThrow({
+      where: { id: wanted.id },
+    });
+    const position = fetchOrder.indexOf(wantedRow.releaseId);
+
+    // It must not have waited for the whole backlog to drain first.
+    expect(position).toBeGreaterThanOrEqual(0);
+    expect(position).toBeLessThan(backlog.length);
+  });
+
+  it("counts on-demand fetches toward warm progress rather than redoing them", async () => {
+    const items = [];
+    for (let i = 0; i < 4; i += 1) items.push(await makeItem({}));
+    mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/shared.jpg"]));
+
+    // Resolve two on demand first.
+    await resolveItemImage(items[0].id);
+    await resolveItemImage(items[1].id);
+    await __drainImageQueueForTest();
+    const afterOnDemand = mockFetch.mock.calls.length;
+    expect(afterOnDemand).toBe(2);
+
+    // Warming should only pick up what's still outstanding.
+    startWarmingStore(storeId);
+    await __drainImageQueueForTest();
+
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it("reports progress that advances as images resolve", async () => {
+    const items = [];
+    for (let i = 0; i < 3; i += 1) items.push(await makeItem({}));
+    mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/p.jpg"]));
+
+    const before = await getImageProgress(storeId);
+    expect(before.remaining).toBeGreaterThanOrEqual(3);
+    expect(before.resolved + before.remaining).toBe(before.total);
+
+    startWarmingStore(storeId);
+    await __drainImageQueueForTest();
+
+    const after = await getImageProgress(storeId);
+    expect(after.remaining).toBe(0);
+    expect(after.resolved).toBe(after.total);
+    // Warming is reported as finished once nothing is outstanding.
+    expect(after.warming).toBe(false);
+  });
+});
+
+describe("stable ordering while warming", () => {
+  it("does not reorder a createdAt-sorted listing when artwork is cached", async () => {
+    const made = [];
+    for (let i = 0; i < 4; i += 1) {
+      made.push(await makeItem({}));
+      // Distinct createdAt values so the ordering is unambiguous.
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    const orderBefore = (
+      await prisma.inventoryItem.findMany({
+        where: { storeId, id: { in: made.map((m) => m.id) } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      })
+    ).map((i) => i.id);
+
+    // Resolve artwork for the oldest item — under the old `updatedAt` ordering
+    // this would have yanked it to the front of the storefront.
+    mockFetch.mockResolvedValue(releaseDetails(["https://img.discogs.com/order.jpg"]));
+    await resolveItemImage(made[0].id);
+    await __drainImageQueueForTest();
+
+    const orderAfter = (
+      await prisma.inventoryItem.findMany({
+        where: { storeId, id: { in: made.map((m) => m.id) } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      })
+    ).map((i) => i.id);
+
+    expect(orderAfter).toEqual(orderBefore);
   });
 });
 

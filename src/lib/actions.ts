@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword } from "@/lib/password";
 import { setSessionCookie, clearSessionCookie } from "@/lib/session";
 import { requireStore } from "@/lib/auth";
 import { startInventorySync, isSyncRunning } from "@/lib/sync";
+import { getImageProgress, type ImageProgress } from "@/lib/item-image";
 import { verifyDiscogsUsername } from "@/lib/discogs";
 import {
   signupSchema,
@@ -172,6 +173,8 @@ export interface SyncStatus {
   error: string | null;
   totalItems: number;
   visibleItems: number;
+  /** Progress of the background cover-art fill for this store. */
+  images: ImageProgress;
 }
 
 /**
@@ -191,10 +194,11 @@ export async function syncInventoryAction(): Promise<FormState> {
 
 export async function getSyncStatusAction(): Promise<SyncStatus> {
   const safeStore = await requireStore();
-  const [store, totalItems, visibleItems] = await Promise.all([
+  const [store, totalItems, visibleItems, images] = await Promise.all([
     prisma.store.findUniqueOrThrow({ where: { id: safeStore.id } }),
     prisma.inventoryItem.count({ where: { storeId: safeStore.id } }),
     prisma.inventoryItem.count({ where: { storeId: safeStore.id, isVisible: true } }),
+    getImageProgress(safeStore.id),
   ]);
 
   return {
@@ -204,6 +208,7 @@ export async function getSyncStatusAction(): Promise<SyncStatus> {
     error: store.lastSyncError,
     totalItems,
     visibleItems,
+    images,
   };
 }
 

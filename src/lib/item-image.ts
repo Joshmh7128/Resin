@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { enrichItemFromRelease } from "@/lib/sync";
-import { isRateLimited, rateLimitCooldownMs } from "@/lib/discogs";
+import { fetchReleaseDetails, isRateLimited, rateLimitCooldownMs } from "@/lib/discogs";
+import type { InventoryItem } from "@prisma/client";
 
 export type ImageResolution =
   /** An image is cached and ready to display. */
@@ -12,28 +12,104 @@ export type ImageResolution =
   /** No such item, or it isn't publicly visible. */
   | { status: "not-found" };
 
+export interface ImageProgress {
+  /** Visible items in the store. */
+  total: number;
+  /** Items whose release has been looked up (image found or confirmed absent). */
+  resolved: number;
+  /** Items still waiting on a Discogs lookup. */
+  remaining: number;
+  /** Whether this store is currently being warmed in the background. */
+  warming: boolean;
+}
+
 /**
- * Items waiting for a Discogs release lookup, drained by a single worker.
- *
- * Requests must never wait on Discogs directly. Discogs allows roughly one
- * request every 2.6s, so a page asking for 24 images would leave later requests
- * queued for a minute — long past any sane request timeout. Instead a request
- * only registers interest and returns immediately; the worker fetches in the
- * background and the client polls until the image lands in the cache.
+ * Fetches the full release (genres, styles, images, notes, tracklist) and caches
+ * it on the item. This is the single place a release lookup is turned into
+ * stored data, used by on-demand requests, background warming, and the item
+ * detail page alike.
  */
-const queue: string[] = [];
-const queued = new Set<string>();
+export async function enrichItemFromRelease(
+  item: Pick<InventoryItem, "id" | "releaseId" | "thumbUrl">,
+  token: string | null | undefined,
+) {
+  const details = await fetchReleaseDetails(item.releaseId, token);
+  await prisma.inventoryItem.update({
+    where: { id: item.id },
+    data: {
+      genres: JSON.stringify(details.genres),
+      styles: JSON.stringify(details.styles),
+      // We store the Discogs CDN URL, never the image bytes — a few hundred
+      // bytes per item, and it disappears with the row when a listing sells.
+      imageUrl: details.images[0] ?? item.thumbUrl,
+      rawData: JSON.stringify({
+        notes: details.notes,
+        tracklist: details.tracklist,
+        labels: details.labels,
+        images: details.images,
+      }),
+    },
+  });
+  return details;
+}
+
+/**
+ * A single worker drains two tiers of work against the shared Discogs throttle.
+ *
+ * `priority` holds items a customer is looking at right now; `warmingStores`
+ * holds stores being filled in ahead of time. Priority always wins, so browsing
+ * never queues behind a warm that may have thousands of items left to do. Both
+ * tiers write to the same cache, so a page view also advances the warm — an item
+ * fetched on demand is simply no longer outstanding.
+ *
+ * Warming is tracked as a set of store ids rather than a list of item ids: the
+ * next item is queried from the database when needed, so memory stays small
+ * regardless of catalogue size and newly synced items are picked up for free.
+ */
+const priorityQueue: string[] = [];
+const priorityQueued = new Set<string>();
+const warmingStores = new Set<string>();
 let workerRunning = false;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function enqueue(itemId: string) {
-  if (queued.has(itemId)) return;
-  queued.add(itemId);
-  queue.push(itemId);
+function enqueuePriority(itemId: string) {
+  if (priorityQueued.has(itemId)) return;
+  priorityQueued.add(itemId);
+  priorityQueue.push(itemId);
   void runWorker();
+}
+
+/** Begin (or resume) filling in every missing image for a store. */
+export function startWarmingStore(storeId: string) {
+  warmingStores.add(storeId);
+  void runWorker();
+}
+
+export function isWarmingStore(storeId: string) {
+  return warmingStores.has(storeId);
+}
+
+/**
+ * Finds the next item needing a lookup in any warming store. Returns null when
+ * every warming store is fully resolved, dropping them as they complete.
+ */
+async function nextWarmingItem(): Promise<string | null> {
+  for (const storeId of Array.from(warmingStores)) {
+    const item = await prisma.inventoryItem.findFirst({
+      where: { storeId, isVisible: true, imageUrl: null, genres: null },
+      select: { id: true },
+      // Newest listings first — most likely to be what someone browses. Uses
+      // `createdAt` because caching artwork bumps `updatedAt`, which would make
+      // this ordering shift as the warm progresses.
+      orderBy: { createdAt: "desc" },
+    });
+    if (item) return item.id;
+    warmingStores.delete(storeId);
+  }
+  return null;
 }
 
 async function fetchAndCache(itemId: string): Promise<void> {
@@ -49,7 +125,7 @@ async function fetchAndCache(itemId: string): Promise<void> {
     },
   });
 
-  // Someone else may have resolved it while this sat in the queue.
+  // Another path may have resolved it while this was queued.
   if (!item || item.imageUrl || item.genres !== null) return;
 
   await enrichItemFromRelease(item, item.store.discogsToken);
@@ -60,23 +136,27 @@ async function runWorker(): Promise<void> {
   workerRunning = true;
 
   try {
-    while (queue.length > 0) {
-      // Wait out a rate-limit cooldown rather than burning through the queue
-      // with requests that are guaranteed to fail.
+    for (;;) {
       if (isRateLimited()) {
         await sleep(rateLimitCooldownMs() + 250);
         continue;
       }
 
-      const itemId = queue.shift();
+      // Customer-facing work first, always.
+      const itemId = priorityQueue.shift() ?? (await nextWarmingItem());
       if (!itemId) break;
-      queued.delete(itemId);
+      priorityQueued.delete(itemId);
 
       try {
         await fetchAndCache(itemId);
       } catch {
-        // Leave it be — viewing the page again re-queues it, and a permanent
-        // failure just means the item keeps showing no artwork.
+        // A permanently broken release shouldn't stall the queue. If it was a
+        // warm item it stays unresolved and will be retried on a later pass;
+        // the store simply shows no artwork for it.
+        if (warmingStores.size > 0) {
+          // Avoid spinning on a release that keeps failing.
+          await sleep(50);
+        }
       }
     }
   } finally {
@@ -85,8 +165,8 @@ async function runWorker(): Promise<void> {
 }
 
 /**
- * Returns an item's cover image if we have it, and otherwise queues it to be
- * fetched. Always returns promptly — it never waits on Discogs.
+ * Returns an item's cover image if we have it, and otherwise queues it at
+ * priority. Always returns promptly — it never waits on Discogs.
  */
 export async function resolveItemImage(itemId: string): Promise<ImageResolution> {
   const item = await prisma.inventoryItem.findFirst({
@@ -103,19 +183,46 @@ export async function resolveItemImage(itemId: string): Promise<ImageResolution>
   // still have no image, the release simply has no artwork.
   if (item.genres !== null) return { status: "none" };
 
-  enqueue(item.id);
+  enqueuePriority(item.id);
   return { status: "pending" };
 }
 
-/** Test hook: wait for the background worker to finish draining. */
+/** How much of a store's artwork has been resolved so far. */
+export async function getImageProgress(storeId: string): Promise<ImageProgress> {
+  const [total, remaining] = await Promise.all([
+    prisma.inventoryItem.count({ where: { storeId, isVisible: true } }),
+    prisma.inventoryItem.count({
+      where: { storeId, isVisible: true, imageUrl: null, genres: null },
+    }),
+  ]);
+
+  return {
+    total,
+    resolved: total - remaining,
+    remaining,
+    warming: warmingStores.has(storeId) && remaining > 0,
+  };
+}
+
+/** Test hook: wait for the worker to finish all outstanding work. */
 export async function __drainImageQueueForTest(): Promise<void> {
-  while (workerRunning || queue.length > 0) {
+  while (workerRunning || priorityQueue.length > 0 || warmingStores.size > 0) {
     await sleep(10);
   }
 }
 
 /** Test hook: clear queue state between cases. */
 export function __resetImageQueueForTest(): void {
-  queue.length = 0;
-  queued.clear();
+  priorityQueue.length = 0;
+  priorityQueued.clear();
+  warmingStores.clear();
+}
+
+/** Test hook: inspect queue state. */
+export function __getImageQueueStateForTest() {
+  return {
+    priority: [...priorityQueue],
+    warming: [...warmingStores],
+    running: workerRunning,
+  };
 }

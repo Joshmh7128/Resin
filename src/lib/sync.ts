@@ -1,11 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import {
-  fetchAllInventoryListings,
-  fetchReleaseDetails,
-  mapListingToItem,
-  DiscogsError,
-} from "@/lib/discogs";
-import type { InventoryItem, Store } from "@prisma/client";
+import { fetchAllInventoryListings, mapListingToItem, DiscogsError } from "@/lib/discogs";
+import { startWarmingStore } from "@/lib/item-image";
+import type { Store } from "@prisma/client";
 
 export interface SyncResult {
   ok: boolean;
@@ -79,40 +75,13 @@ export async function startInventorySync(
   return { started: true };
 }
 
-/**
- * Fetches the full release (genres, styles, full-size images, notes, tracklist)
- * and caches it on the item. Used both for on-demand detail-page enrichment and
- * for the background thumbnail backfill below.
- */
-export async function enrichItemFromRelease(
-  item: Pick<InventoryItem, "id" | "releaseId" | "thumbUrl">,
-  token: string | null | undefined,
-) {
-  const details = await fetchReleaseDetails(item.releaseId, token);
-  await prisma.inventoryItem.update({
-    where: { id: item.id },
-    data: {
-      genres: JSON.stringify(details.genres),
-      styles: JSON.stringify(details.styles),
-      imageUrl: details.images[0] ?? item.thumbUrl,
-      rawData: JSON.stringify({
-        notes: details.notes,
-        tracklist: details.tracklist,
-        labels: details.labels,
-        images: details.images,
-      }),
-    },
-  });
-  return details;
-}
-
 /*
- * Cover art is deliberately not fetched here. Discogs' inventory endpoint omits
- * artwork, so each image costs a separate release lookup at ~2.6s of throttle.
- * A batch backfill after sync could only ever cover a fraction of a large store
- * (and competed with on-demand requests for the same rate limit), which is why
- * most items still showed "No image". Images are now resolved per item, on
- * demand, for the page actually being viewed — see `src/lib/item-image.ts`.
+ * Cover art is not fetched inline here. Discogs' inventory endpoint omits
+ * artwork, so each image costs a separate release lookup against a throttle of
+ * roughly one request every 2.8s — far too slow to do while a sync runs. Once
+ * the listings are in, the store is handed to the image warmer, which fills in
+ * artwork in the background and always yields to customers browsing the shop.
+ * See `src/lib/item-image.ts`.
  */
 
 export async function syncStoreInventory(store: Store): Promise<SyncResult> {
@@ -194,6 +163,10 @@ export async function syncStoreInventory(store: Store): Promise<SyncResult> {
         lastSyncError: null,
       },
     });
+
+    // Listings are in; now fill in artwork for anything still missing it.
+    // Runs in the background at low priority behind customer requests.
+    startWarmingStore(store.id);
 
     return { ok: true, total: forSale.length, added, removed: idsToRemove.length };
   } catch (error) {

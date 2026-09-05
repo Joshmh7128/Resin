@@ -28,7 +28,9 @@ export default async function InventoryPage({
     prisma.inventoryItem.count({ where }),
     prisma.inventoryItem.findMany({
       where,
-      orderBy: { updatedAt: "desc" },
+      // Stable ordering: `updatedAt` shifts whenever cover art is cached, which
+      // made rows jump around while a warm was running.
+      orderBy: { createdAt: "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),

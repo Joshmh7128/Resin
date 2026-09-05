@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Store {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  email            String   @unique
+  passwordHash     String
+  discogsUsername  String
+  discogsToken     String?
+  currency         String   @default("USD")
+  itemsPerPage     Int      @default(24)
+  logoUrl          String?
+  description      String?
+  accentColor      String   @default("#2563eb")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  lastSyncAt       DateTime?
+  lastSyncStatus   String?
+  lastSyncError    String?
+
+  items InventoryItem[]
+
+  @@index([discogsUsername])
+}
+
+model InventoryItem {
+  id                 String   @id @default(cuid())
+  storeId            String
+  store              Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  listingId          BigInt
+  releaseId          Int
+  title              String
+  artist             String
+  label              String?
+  catalogNumber      String?
+  format             String?
+  formatDescriptions String?
+  genres             String?
+  styles             String?
+  year               Int?
+  country            String?
+  condition          String?
+  sleeveCondition    String?
+  price              Float?
+  priceCurrency      String?
+  comments           String?
+  imageUrl           String?
+  thumbUrl           String?
+  discogsUri         String?
+  releaseUri         String?
+  status             String?
+  searchText         String
+
+  isVisible          Boolean  @default(true)
+  isFeatured         Boolean  @default(false)
+
+  rawData            String?
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([storeId, listingId])
+  @@index([storeId, isVisible])
+  @@index([storeId, isFeatured])
+}

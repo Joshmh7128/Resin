@@ -15,7 +15,8 @@ import {
   settingsSchema,
   changePasswordSchema,
   shopDetailsSchema,
-  appearanceSchema,
+  partialAppearanceSchema,
+  APPEARANCE_KEYS,
   locationSchema,
 } from "@/lib/validation";
 
@@ -297,6 +298,8 @@ export async function updateShopDetailsAction(
     instagramUrl: formData.get("instagramUrl") ?? "",
     facebookUrl: formData.get("facebookUrl") ?? "",
     bandcampUrl: formData.get("bandcampUrl") ?? "",
+    otherUrl: formData.get("otherUrl") ?? "",
+    otherLabel: formData.get("otherLabel") ?? "",
   });
 
   if (!parsed.success) {
@@ -315,11 +318,14 @@ export async function updateShopDetailsAction(
       instagramUrl: blankToNull(d.instagramUrl),
       facebookUrl: blankToNull(d.facebookUrl),
       bandcampUrl: blankToNull(d.bandcampUrl),
+      otherUrl: blankToNull(d.otherUrl),
+      // A label with no link behind it would never be shown, so drop it.
+      otherLabel: d.otherUrl ? blankToNull(d.otherLabel) : null,
     },
   });
 
   revalidateStore(store.slug);
-  return { success: "Shop details saved" };
+  return { success: "Saved. Your storefront is updated." };
 }
 
 /** Blank fields are stored as null so the storefront can simply skip them. */
@@ -338,14 +344,20 @@ export async function updateAppearanceAction(
 ): Promise<FormState> {
   const store = await requireStore();
 
-  const parsed = appearanceSchema.safeParse({
-    theme: formData.get("theme"),
-    headerStyle: formData.get("headerStyle"),
-    defaultLayout: formData.get("defaultLayout"),
-    featuredLayout: formData.get("featuredLayout"),
-    accentColor: formData.get("accentColor"),
-  });
+  // Each appearance section is its own form with its own save button, so only
+  // the fields that form owns are posted. Anything absent is left as it is
+  // rather than being blanked by a save from another section.
+  const submitted: Record<string, unknown> = {};
+  for (const key of APPEARANCE_KEYS) {
+    const value = formData.get(key);
+    if (typeof value === "string") submitted[key] = value;
+  }
 
+  if (Object.keys(submitted).length === 0) {
+    return { error: "Nothing to save" };
+  }
+
+  const parsed = partialAppearanceSchema.safeParse(submitted);
   if (!parsed.success) {
     return { error: firstIssueMessage(parsed.error.issues) };
   }
@@ -353,7 +365,7 @@ export async function updateAppearanceAction(
   await prisma.store.update({ where: { id: store.id }, data: parsed.data });
 
   revalidateStore(store.slug);
-  return { success: "Appearance saved" };
+  return { success: "Saved. Your storefront is updated." };
 }
 
 /**

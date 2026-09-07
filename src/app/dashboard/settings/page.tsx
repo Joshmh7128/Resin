@@ -1,7 +1,7 @@
 import { requireStore } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SettingsForm } from "@/components/SettingsForm";
-import { AppearanceForm } from "@/components/AppearanceForm";
+import { AppearanceSections } from "@/components/AppearanceForm";
 import { ShopDetailsForm } from "@/components/ShopDetailsForm";
 import { LocationsManager } from "@/components/LocationsManager";
 import { PasswordForm } from "@/components/PasswordForm";
@@ -26,12 +26,14 @@ export default async function SettingsPage() {
         <SettingsForm store={store} />
       </Panel>
 
-      <Panel
-        title="Appearance"
-        blurb="Choose how your storefront looks and how customers browse it by default."
-      >
-        <AppearanceForm store={store} />
-      </Panel>
+      <div>
+        <h2 className="text-xl font-bold text-neutral-900">Appearance</h2>
+        <p className="mb-4 mt-1 text-sm text-neutral-600">
+          How your storefront looks and how customers browse it by default. Each section saves on
+          its own, and the preview beside it shows the change before you commit to it.
+        </p>
+        <AppearanceSections store={store} />
+      </div>
 
       <Panel
         title="Shop details"

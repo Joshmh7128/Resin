@@ -33,6 +33,10 @@ model Store {
   instagramUrl     String?
   facebookUrl      String?
   bandcampUrl      String?
+  /** One free-form link for anywhere else a shop sells or posts. */
+  otherUrl         String?
+  /** What to call that link. Falls back to its domain when left blank. */
+  otherLabel       String?
 
   // Presentation. Stores are browsed mostly on phones, so how the shop chooses
   // to lay itself out matters more than any single default we could pick.

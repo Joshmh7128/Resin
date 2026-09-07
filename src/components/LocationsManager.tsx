@@ -3,6 +3,8 @@
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { deleteLocationAction, saveLocationAction, type FormState } from "@/lib/actions";
+import { UnsavedNotice } from "@/components/UnsavedNotice";
+import { useSyncedForm } from "@/lib/use-synced-form";
 import type { StoreLocation } from "@prisma/client";
 
 const initialState: FormState = {};
@@ -47,6 +49,18 @@ export function LocationsManager({ locations }: { locations: StoreLocation[] }) 
   );
 }
 
+function savedFields(location?: StoreLocation) {
+  return {
+    label: location?.label ?? "",
+    addressLine: location?.addressLine ?? "",
+    city: location?.city ?? "",
+    postcode: location?.postcode ?? "",
+    country: location?.country ?? "",
+    phone: location?.phone ?? "",
+    openingHours: location?.openingHours ?? "",
+  };
+}
+
 function LocationForm({
   location,
   onCancel,
@@ -56,6 +70,7 @@ function LocationForm({
 }) {
   const [state, formAction] = useActionState(saveLocationAction, initialState);
   const [deleting, setDeleting] = useState(false);
+  const { values, set, dirty } = useSyncedForm(savedFields(location));
   const id = location?.id ?? "new";
 
   return (
@@ -65,7 +80,7 @@ function LocationForm({
       {state.error && (
         <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p>
       )}
-      {state.success && (
+      {state.success && !dirty && (
         <p className="mb-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">
           {state.success}
         </p>
@@ -81,7 +96,8 @@ function LocationForm({
             id={`label-${id}`}
             name="label"
             type="text"
-            defaultValue={location?.label ?? ""}
+            value={values.label}
+            onChange={(event) => set("label")(event.target.value)}
             className={inputClass}
           />
         </Field>
@@ -91,7 +107,8 @@ function LocationForm({
             name="addressLine"
             type="text"
             placeholder="12 Bleecker Street"
-            defaultValue={location?.addressLine ?? ""}
+            value={values.addressLine}
+            onChange={(event) => set("addressLine")(event.target.value)}
             className={inputClass}
           />
         </Field>
@@ -101,7 +118,8 @@ function LocationForm({
             name="city"
             type="text"
             placeholder="New York"
-            defaultValue={location?.city ?? ""}
+            value={values.city}
+            onChange={(event) => set("city")(event.target.value)}
             className={inputClass}
           />
         </Field>
@@ -110,7 +128,8 @@ function LocationForm({
             id={`postcode-${id}`}
             name="postcode"
             type="text"
-            defaultValue={location?.postcode ?? ""}
+            value={values.postcode}
+            onChange={(event) => set("postcode")(event.target.value)}
             className={inputClass}
           />
         </Field>
@@ -119,7 +138,8 @@ function LocationForm({
             id={`country-${id}`}
             name="country"
             type="text"
-            defaultValue={location?.country ?? ""}
+            value={values.country}
+            onChange={(event) => set("country")(event.target.value)}
             className={inputClass}
           />
         </Field>
@@ -128,7 +148,8 @@ function LocationForm({
             id={`phone-${id}`}
             name="phone"
             type="tel"
-            defaultValue={location?.phone ?? ""}
+            value={values.phone}
+            onChange={(event) => set("phone")(event.target.value)}
             className={inputClass}
           />
         </Field>
@@ -145,7 +166,8 @@ function LocationForm({
             name="openingHours"
             rows={4}
             placeholder={"Mon: Closed\nTue to Sat: 11am to 7pm\nSun: 12pm to 5pm"}
-            defaultValue={location?.openingHours ?? ""}
+            value={values.openingHours}
+            onChange={(event) => set("openingHours")(event.target.value)}
             className={inputClass}
           />
         </Field>
@@ -153,6 +175,7 @@ function LocationForm({
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <SaveButton isNew={!location} />
+        <UnsavedNotice dirty={dirty} />
 
         {onCancel && (
           <button

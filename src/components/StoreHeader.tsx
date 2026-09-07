@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { formatRelativeTime } from "@/lib/format";
+import { storeLinks, type StoreLink } from "@/lib/store-links";
+import { StoreLinkIcon } from "@/components/StoreLinkIcon";
 import type { StorePresentation } from "@/lib/theme";
 import type { Store, StoreLocation } from "@prisma/client";
 
@@ -33,6 +35,9 @@ export function StoreHeader({
     </p>
   );
 
+  // The profile picture sits beside the name in its own row, never over the
+  // banner. Overlapping the two looked like a rendering fault, and on a phone
+  // it left the picture half-buried in whatever the banner happened to show.
   const avatar = store.logoUrl ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img
@@ -40,68 +45,54 @@ export function StoreHeader({
       alt=""
       className={
         banner
-          ? "h-14 w-14 shrink-0 rounded-lg border-2 border-st-surface object-cover shadow-sm sm:h-20 sm:w-20"
+          ? "h-11 w-11 shrink-0 rounded-lg object-cover ring-1 ring-st-border sm:h-14 sm:w-14"
           : "h-9 w-9 shrink-0 rounded object-cover ring-1 ring-st-border sm:h-11 sm:w-11"
       }
     />
   ) : null;
 
+  const identity = (
+    <>
+      {avatar}
+      <div className="min-w-0 flex-1">
+        <h1 className="truncate text-base font-semibold tracking-tight text-st-fg sm:text-xl">
+          {store.name}
+        </h1>
+        {meta}
+      </div>
+    </>
+  );
+
   return (
     <header className="border-b border-st-border bg-st-surface">
-      {banner ? (
-        <div className="relative">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={store.bannerUrl!}
-            alt=""
-            className="h-24 w-full object-cover sm:h-40"
-          />
-          <div className="h-1 w-full bg-st-accent" aria-hidden />
-        </div>
-      ) : (
-        <div className="h-1 w-full bg-st-accent" aria-hidden />
+      {banner && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={store.bannerUrl!} alt="" className="h-20 w-full object-cover sm:h-36" />
       )}
+      <div className="h-1 w-full bg-st-accent" aria-hidden />
 
-      <div
-        className={`mx-auto max-w-6xl px-4 sm:px-6 ${
-          banner ? "-mt-7 pb-2.5 sm:-mt-10 sm:pb-3" : "py-2.5 sm:py-3"
-        }`}
-      >
+      <div className="mx-auto max-w-6xl px-4 py-2.5 sm:px-6 sm:py-3">
         {about.hasAny ? (
           <details className="group">
             <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
-              {avatar}
-              <div className={`min-w-0 flex-1 ${banner ? "pt-8 sm:pt-11" : ""}`}>
-                <h1 className="truncate text-base font-semibold tracking-tight text-st-fg sm:text-xl">
-                  {store.name}
-                </h1>
-                {meta}
-              </div>
-              <InfoPill className={banner ? "mt-8 sm:mt-11" : ""} />
+              {identity}
+              <InfoPill />
             </summary>
 
             <StoreAbout store={store} about={about} />
           </details>
         ) : (
-          <div className="flex items-center gap-3">
-            {avatar}
-            <div className={`min-w-0 flex-1 ${banner ? "pt-8 sm:pt-11" : ""}`}>
-              <h1 className="truncate text-base font-semibold tracking-tight text-st-fg sm:text-xl">
-                {store.name}
-              </h1>
-              {meta}
-            </div>
-          </div>
+          <div className="flex items-center gap-3">{identity}</div>
         )}
       </div>
     </header>
   );
 }
 
-function InfoPill({ className = "" }: { className?: string }) {
+function InfoPill() {
   return (
     <span
-      className={`flex shrink-0 items-center gap-1 rounded-full border border-st-border bg-st-surface px-2.5 py-1 text-xs font-medium text-st-muted transition group-hover:bg-st-surface-2 ${className}`}
+      className="flex shrink-0 items-center gap-1 rounded-full border border-st-border bg-st-surface px-2.5 py-1 text-xs font-medium text-st-muted transition group-hover:bg-st-surface-2"
     >
       <span className="hidden sm:inline">Shop info</span>
       <span className="sm:hidden">Info</span>
@@ -125,18 +116,13 @@ function InfoPill({ className = "" }: { className?: string }) {
 
 interface AboutContent {
   text: string | null;
-  links: { label: string; href: string }[];
+  links: StoreLink[];
   locations: StoreLocation[];
   hasAny: boolean;
 }
 
 function collectAbout(store: StoreWithLocations): AboutContent {
-  const links = [
-    { label: "Website", href: store.websiteUrl },
-    { label: "Instagram", href: store.instagramUrl },
-    { label: "Facebook", href: store.facebookUrl },
-    { label: "Bandcamp", href: store.bandcampUrl },
-  ].filter((l): l is { label: string; href: string } => Boolean(l.href));
+  const links = storeLinks(store);
 
   // The longer "about" copy wins when a shop has written one; `description` is
   // the short line used for search results and link previews.
@@ -183,12 +169,13 @@ function StoreAbout({ store, about }: { store: StoreWithLocations; about: AboutC
         <nav className="mt-4 flex flex-wrap gap-2">
           {about.links.map((link) => (
             <a
-              key={link.label}
+              key={link.kind}
               href={link.href}
               target="_blank"
               rel="noreferrer noopener"
-              className="rounded-full border border-st-border px-3 py-1 text-xs font-medium text-st-muted transition hover:bg-st-surface-2"
+              className="inline-flex items-center gap-1.5 rounded-full border border-st-border px-3 py-1 text-xs font-medium text-st-muted transition hover:bg-st-surface-2"
             >
+              <StoreLinkIcon kind={link.kind} />
               {link.label}
             </a>
           ))}

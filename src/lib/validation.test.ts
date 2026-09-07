@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { appearanceSchema, locationSchema, shopDetailsSchema } from "@/lib/validation";
+import {
+  appearanceSchema,
+  locationSchema,
+  partialAppearanceSchema,
+  shopDetailsSchema,
+} from "@/lib/validation";
 
 const emptyDetails = {
   logoUrl: "",
@@ -9,6 +14,8 @@ const emptyDetails = {
   instagramUrl: "",
   facebookUrl: "",
   bandcampUrl: "",
+  otherUrl: "",
+  otherLabel: "",
 };
 
 const emptyLocation = {
@@ -52,7 +59,7 @@ describe("shopDetailsSchema", () => {
       "data:text/html;base64,PHNjcmlwdD4=",
       "file:///etc/passwd",
     ]) {
-      for (const field of ["websiteUrl", "logoUrl", "bannerUrl"]) {
+      for (const field of ["websiteUrl", "logoUrl", "bannerUrl", "otherUrl"]) {
         const result = shopDetailsSchema.safeParse({ ...emptyDetails, [field]: url });
         expect(result.success, `${field}=${url} should be rejected`).toBe(false);
       }
@@ -113,5 +120,26 @@ describe("appearanceSchema", () => {
   it("rejects an accent colour that isn't a hex triple", () => {
     expect(appearanceSchema.safeParse({ ...valid, accentColor: "blue" }).success).toBe(false);
     expect(appearanceSchema.safeParse({ ...valid, accentColor: "#25f" }).success).toBe(false);
+  });
+});
+
+describe("partialAppearanceSchema", () => {
+  it("accepts one section's fields on their own", () => {
+    // Each appearance section is its own form with its own save button, so a
+    // submission carries only the fields that section owns.
+    const result = partialAppearanceSchema.safeParse({ defaultLayout: "list" });
+    expect(result.success).toBe(true);
+    expect(result.success && result.data).toEqual({ defaultLayout: "list" });
+  });
+
+  it("still rejects a bad value in the fields it was given", () => {
+    expect(partialAppearanceSchema.safeParse({ theme: "neon" }).success).toBe(false);
+  });
+
+  it("never invents values for the fields it wasn't given", () => {
+    // Anything absent has to be left alone. Filling in a default here would let
+    // saving the layout quietly reset the shop's theme.
+    const result = partialAppearanceSchema.safeParse({ headerStyle: "banner" });
+    expect(result.success && Object.keys(result.data)).toEqual(["headerStyle"]);
   });
 });

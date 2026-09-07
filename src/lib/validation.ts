@@ -66,6 +66,8 @@ export const shopDetailsSchema = z.object({
   instagramUrl: optionalUrl("Instagram"),
   facebookUrl: optionalUrl("Facebook"),
   bandcampUrl: optionalUrl("Bandcamp"),
+  otherUrl: optionalUrl("link"),
+  otherLabel: optionalText(30),
 });
 
 /**
@@ -88,13 +90,24 @@ export const locationSchema = z.object({
  * app actually implements rather than stored as free text, so a hand-posted
  * form can't leave a store rendering with no theme at all.
  */
-export const appearanceSchema = z.object({
+const appearanceFields = {
   theme: z.enum(THEME_IDS),
   headerStyle: z.enum(HEADER_STYLE_IDS),
   defaultLayout: z.enum(LAYOUT_IDS),
   featuredLayout: z.enum(FEATURED_LAYOUT_IDS),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #2563eb"),
-});
+};
+
+export const appearanceSchema = z.object(appearanceFields);
+
+/**
+ * The appearance settings are saved a section at a time, each with its own
+ * preview and its own save button, so a form posts only the fields it owns.
+ * Anything absent is left alone rather than overwritten with a blank.
+ */
+export const partialAppearanceSchema = z.object(appearanceFields).partial();
+
+export const APPEARANCE_KEYS = Object.keys(appearanceFields) as (keyof typeof appearanceFields)[];
 
 export const changePasswordSchema = z
   .object({

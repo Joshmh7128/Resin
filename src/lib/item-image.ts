@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import { fetchReleaseDetails, isRateLimited, rateLimitCooldownMs } from "@/lib/discogs";
+import {
+  encodeTags,
+  fetchReleaseDetails,
+  isRateLimited,
+  rateLimitCooldownMs,
+} from "@/lib/discogs";
 import type { InventoryItem } from "@prisma/client";
 
 export type ImageResolution =
@@ -24,13 +29,32 @@ export interface ImageProgress {
 }
 
 /**
+ * The generation of release data this build stores. Raise it whenever
+ * `enrichItemFromRelease` starts keeping something new, and the warm will
+ * revisit items looked up by an older build. See `InventoryItem.detailVersion`.
+ */
+export const DETAIL_VERSION = 1;
+
+/**
+ * Items in a store that still need a release lookup: either they have never had
+ * one, or they had one before we started storing the fields we store now.
+ */
+function needsLookup(storeId: string) {
+  return {
+    storeId,
+    isVisible: true,
+    detailVersion: { lt: DETAIL_VERSION },
+  };
+}
+
+/**
  * Fetches the full release (genres, styles, images, notes, tracklist) and caches
  * it on the item. This is the single place a release lookup is turned into
  * stored data, used by on-demand requests, background warming, and the item
  * detail page alike.
  */
 export async function enrichItemFromRelease(
-  item: Pick<InventoryItem, "id" | "releaseId" | "thumbUrl">,
+  item: Pick<InventoryItem, "id" | "releaseId" | "thumbUrl" | "formatDescriptions">,
   token: string | null | undefined,
 ) {
   const details = await fetchReleaseDetails(item.releaseId, token);
@@ -39,6 +63,13 @@ export async function enrichItemFromRelease(
     data: {
       genres: JSON.stringify(details.genres),
       styles: JSON.stringify(details.styles),
+      // The release carries the details a customer filters by that the
+      // inventory listing doesn't: which label pressed it, where, and the
+      // format broken into its parts rather than one run-together string.
+      label: details.labelNames[0] ?? null,
+      country: details.country,
+      formatDescriptions: encodeTags(details.formats) ?? item.formatDescriptions,
+      detailVersion: DETAIL_VERSION,
       // We store the Discogs CDN URL, never the image bytes, which is a few hundred
       // bytes per item, and it disappears with the row when a listing sells.
       imageUrl: details.images[0] ?? item.thumbUrl,
@@ -99,7 +130,7 @@ export function isWarmingStore(storeId: string) {
 async function nextWarmingItem(): Promise<string | null> {
   for (const storeId of Array.from(warmingStores)) {
     const item = await prisma.inventoryItem.findFirst({
-      where: { storeId, isVisible: true, imageUrl: null, genres: null },
+      where: needsLookup(storeId),
       select: { id: true },
       // Newest listings first, most likely to be what someone browses. Uses
       // `createdAt` because caching artwork bumps `updatedAt`, which would make
@@ -119,14 +150,14 @@ async function fetchAndCache(itemId: string): Promise<void> {
       id: true,
       releaseId: true,
       thumbUrl: true,
-      genres: true,
-      imageUrl: true,
+      formatDescriptions: true,
+      detailVersion: true,
       store: { select: { discogsToken: true } },
     },
   });
 
-  // Another path may have resolved it while this was queued.
-  if (!item || item.imageUrl || item.genres !== null) return;
+  // Another path may have looked it up while this was queued.
+  if (!item || item.detailVersion >= DETAIL_VERSION) return;
 
   await enrichItemFromRelease(item, item.store.discogsToken);
 }
@@ -201,9 +232,7 @@ export async function resolveItemImage(itemId: string): Promise<ImageResolution>
 export async function getImageProgress(storeId: string): Promise<ImageProgress> {
   const [total, remaining] = await Promise.all([
     prisma.inventoryItem.count({ where: { storeId, isVisible: true } }),
-    prisma.inventoryItem.count({
-      where: { storeId, isVisible: true, imageUrl: null, genres: null },
-    }),
+    prisma.inventoryItem.count({ where: needsLookup(storeId) }),
   ]);
 
   return {

@@ -226,6 +226,30 @@ export async function fetchAllInventoryListings(
   return all;
 }
 
+/**
+ * Splits a listing's format string ("Vinyl, LP, Album, Reissue") into tags,
+ * dropping the quantity and pressing-speed fragments that are no use as
+ * filters. The inventory endpoint only gives this flattened string; the release
+ * endpoint returns the same information structured, via `fetchReleaseDetails`.
+ */
+export function splitFormatString(value: string | null | undefined): string[] {
+  if (!value) return [];
+  const tags = new Set<string>();
+  for (const part of value.split(",")) {
+    const tag = part.trim();
+    if (!tag || tag.length > 40) continue;
+    if (/^\d+\s*(x|×)?$/i.test(tag)) continue; // a quantity, e.g. "2" or "2x"
+    if (/RPM$/i.test(tag)) continue; // a pressing speed, e.g. "33 ⅓ RPM"
+    tags.add(tag);
+  }
+  return [...tags];
+}
+
+/** Encodes a tag list for storage, or null when there is nothing to store. */
+export function encodeTags(tags: string[]): string | null {
+  return tags.length > 0 ? JSON.stringify(tags) : null;
+}
+
 function parseArtistTitle(listing: DiscogsListing): { artist: string; title: string } {
   const release = listing.release;
   if (release.artist && release.title) {
@@ -249,6 +273,8 @@ export interface MappedInventoryItem {
   artist: string;
   catalogNumber: string | null;
   format: string | null;
+  /** JSON array of the format's parts, e.g. ["Vinyl","LP","Album"]. */
+  formatDescriptions: string | null;
   year: number | null;
   condition: string | null;
   sleeveCondition: string | null;
@@ -278,6 +304,7 @@ export function mapListingToItem(listing: DiscogsListing): MappedInventoryItem {
     artist,
     catalogNumber: release.catalog_number ?? null,
     format: release.format ?? null,
+    formatDescriptions: encodeTags(splitFormatString(release.format)),
     year: release.year ?? null,
     condition: listing.condition ?? null,
     sleeveCondition: listing.sleeve_condition ?? null,
@@ -299,16 +326,25 @@ export interface DiscogsReleaseDetails {
   images: string[];
   notes: string | null;
   tracklist: { position: string; title: string; duration: string }[];
+  /** Label names paired with their catalogue numbers, for display. */
   labels: string[];
+  /** Label names on their own, which is what customers filter by. */
+  labelNames: string[];
+  /** Where the record was pressed, e.g. "UK". */
+  country: string | null;
+  /** Format tags, e.g. ["Vinyl","LP","Album","Reissue"]. */
+  formats: string[];
 }
 
 interface DiscogsReleaseResponse {
   genres?: string[];
   styles?: string[];
   notes?: string;
+  country?: string;
   images?: { uri: string; type: string }[];
   tracklist?: { position: string; title: string; duration: string }[];
   labels?: { name: string; catno: string }[];
+  formats?: { name?: string; qty?: string; descriptions?: string[] }[];
 }
 
 export async function fetchReleaseDetails(
@@ -323,7 +359,29 @@ export async function fetchReleaseDetails(
     notes: data.notes ?? null,
     tracklist: data.tracklist ?? [],
     labels: (data.labels ?? []).map((l) => `${l.name} (${l.catno})`),
+    labelNames: (data.labels ?? []).map((l) => l.name).filter(Boolean),
+    country: data.country || null,
+    formats: releaseFormatTags(data.formats),
   };
+}
+
+/**
+ * Flattens a release's `formats` into filter tags. Discogs nests the medium
+ * ("Vinyl") and its descriptions ("LP", "Album", "Reissue") separately, but a
+ * customer filtering their browse doesn't care about that distinction.
+ */
+function releaseFormatTags(
+  formats: { name?: string; descriptions?: string[] }[] | undefined,
+): string[] {
+  const tags = new Set<string>();
+  for (const format of formats ?? []) {
+    if (format.name) tags.add(format.name.trim());
+    for (const description of format.descriptions ?? []) {
+      const value = description.trim();
+      if (value) tags.add(value);
+    }
+  }
+  return [...tags];
 }
 
 export async function verifyDiscogsUsername(

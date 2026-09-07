@@ -58,92 +58,56 @@ export function ShopDetailsForm({ store }: { store: SafeStore }) {
       )}
 
       <p className="text-sm text-neutral-600">
-        Everything here is optional and appears on your public storefront. Leave a field
-        blank and it simply won&apos;t be shown.
+        Everything here is optional and appears on your public storefront. Leave a field blank
+        and it simply won&apos;t be shown.
       </p>
 
-      <Field
-        label="Logo image URL"
-        htmlFor="logoUrl"
-        hint="A link to a hosted image. Shown beside your store name."
-      >
-        <input
-          id="logoUrl"
-          name="logoUrl"
-          type="url"
-          placeholder="https://example.com/logo.png"
-          defaultValue={store.logoUrl ?? ""}
-          className={inputClass}
-        />
-      </Field>
-
-      <fieldset className="space-y-4">
-        <legend className="text-sm font-semibold text-neutral-900">Where to find you</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Street address" htmlFor="addressLine">
-            <input
-              id="addressLine"
-              name="addressLine"
-              type="text"
-              placeholder="12 Bleecker Street"
-              defaultValue={store.addressLine ?? ""}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Town or city" htmlFor="city">
-            <input
-              id="city"
-              name="city"
-              type="text"
-              placeholder="New York"
-              defaultValue={store.city ?? ""}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Postcode or ZIP" htmlFor="postcode">
-            <input
-              id="postcode"
-              name="postcode"
-              type="text"
-              defaultValue={store.postcode ?? ""}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Country" htmlFor="country">
-            <input
-              id="country"
-              name="country"
-              type="text"
-              defaultValue={store.country ?? ""}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Phone" htmlFor="phone">
-            <input
-              id="phone"
-              name="phone"
-              type="tel"
-              defaultValue={store.phone ?? ""}
-              className={inputClass}
-            />
-          </Field>
-        </div>
-
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field
-          label="Opening hours"
-          htmlFor="openingHours"
-          hint="One line per day. Write it however you like, for example “Closed Mondays”."
+          label="Profile picture URL"
+          htmlFor="logoUrl"
+          hint="A link to a hosted square image. Shown beside your store name."
         >
-          <textarea
-            id="openingHours"
-            name="openingHours"
-            rows={4}
-            placeholder={"Mon: Closed\nTue to Sat: 11am to 7pm\nSun: 12pm to 5pm"}
-            defaultValue={store.openingHours ?? ""}
+          <input
+            id="logoUrl"
+            name="logoUrl"
+            type="url"
+            placeholder="https://example.com/logo.png"
+            defaultValue={store.logoUrl ?? ""}
             className={inputClass}
           />
         </Field>
-      </fieldset>
+
+        <Field
+          label="Banner image URL"
+          htmlFor="bannerUrl"
+          hint="A wide image across the top. Only shown if your title bar is set to Banner."
+        >
+          <input
+            id="bannerUrl"
+            name="bannerUrl"
+            type="url"
+            placeholder="https://example.com/banner.jpg"
+            defaultValue={store.bannerUrl ?? ""}
+            className={inputClass}
+          />
+        </Field>
+      </div>
+
+      <Field
+        label="About your shop"
+        htmlFor="aboutText"
+        hint="The longer version, shown when a customer opens Shop info. The short description under Store settings is what appears in search results and link previews."
+      >
+        <textarea
+          id="aboutText"
+          name="aboutText"
+          rows={5}
+          placeholder="What you specialise in, how long you've been going, anything a customer should know before visiting."
+          defaultValue={store.aboutText ?? ""}
+          className={inputClass}
+        />
+      </Field>
 
       <fieldset className="space-y-4">
         <legend className="text-sm font-semibold text-neutral-900">Links</legend>

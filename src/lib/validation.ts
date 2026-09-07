@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  FEATURED_LAYOUT_IDS,
+  HEADER_STYLE_IDS,
+  LAYOUT_IDS,
+  THEME_IDS,
+} from "@/lib/theme";
 
 export const slugSchema = z
   .string()
@@ -27,9 +33,6 @@ export const settingsSchema = z.object({
   currency: z.string().min(1).max(10),
   itemsPerPage: z.coerce.number().int().min(6).max(96),
   description: z.string().max(1000).optional().or(z.literal("")),
-  accentColor: z
-    .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #2563eb"),
 });
 
 /** Blank is always allowed: every shop detail is optional. */
@@ -56,17 +59,41 @@ const optionalUrl = (label: string) =>
     .optional();
 
 export const shopDetailsSchema = z.object({
-  logoUrl: optionalUrl("logo image"),
+  logoUrl: optionalUrl("profile picture"),
+  bannerUrl: optionalUrl("banner image"),
+  aboutText: optionalText(2000),
+  websiteUrl: optionalUrl("website"),
+  instagramUrl: optionalUrl("Instagram"),
+  facebookUrl: optionalUrl("Facebook"),
+  bandcampUrl: optionalUrl("Bandcamp"),
+});
+
+/**
+ * A single trading address. Shops can have several, so this validates one at a
+ * time; everything is optional because an online-only shop still wants the rest
+ * of its about section.
+ */
+export const locationSchema = z.object({
+  label: optionalText(60),
   addressLine: optionalText(200),
   city: optionalText(100),
   postcode: optionalText(20),
   country: optionalText(100),
   phone: optionalText(40),
   openingHours: optionalText(500),
-  websiteUrl: optionalUrl("website"),
-  instagramUrl: optionalUrl("Instagram"),
-  facebookUrl: optionalUrl("Facebook"),
-  bandcampUrl: optionalUrl("Bandcamp"),
+});
+
+/**
+ * How a shop's storefront looks. Each value is checked against the options the
+ * app actually implements rather than stored as free text, so a hand-posted
+ * form can't leave a store rendering with no theme at all.
+ */
+export const appearanceSchema = z.object({
+  theme: z.enum(THEME_IDS),
+  headerStyle: z.enum(HEADER_STYLE_IDS),
+  defaultLayout: z.enum(LAYOUT_IDS),
+  featuredLayout: z.enum(FEATURED_LAYOUT_IDS),
+  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #2563eb"),
 });
 
 export const changePasswordSchema = z

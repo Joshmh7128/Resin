@@ -59,19 +59,34 @@ See `.env.example` for the full template. Summary:
   and password (`src/lib/actions.ts`, `src/app/signup`, `src/app/login`).
 - **Sync** (`src/lib/sync.ts`) pulls the store's public "For Sale" listings from
   Discogs' inventory endpoint and upserts them into a local `InventoryItem` cache,
-  removing items no longer for sale. Cover art is usually missing from the listing
-  endpoint, so a bounded background pass (`backfillThumbnails`) fetches full release
-  images for the newest items after each sync without blocking the sync response or
-  hammering Discogs' rate limit.
+  removing items no longer for sale.
+- **Release lookups** (`src/lib/item-image.ts`) fill in what the inventory endpoint
+  leaves out: cover art, genres, styles, label, pressing country and format tags.
+  Each release costs a separate request against a throttle of about one per second,
+  far too slow to do inline, so a single background worker drains two tiers of work.
+  Items a customer is looking at right now always jump the queue; everything else is
+  warmed store by store behind them. Both write to the same cache, so browsing also
+  advances the warm. `InventoryItem.detailVersion` records which generation of
+  release data an item holds, so when a build starts storing something new, already
+  looked-up items are revisited rather than left behind.
 - **Storefront** (`src/app/store/[slug]`) reads only from the local cache. Search,
-  sort, and pagination are all local database queries, so public traffic never calls
-  the Discogs API directly.
+  filters, sorting and pagination are all local database queries, so public traffic
+  never calls the Discogs API directly. The browse state lives entirely in the query
+  string (`src/lib/storefront-query.ts`), so a filtered view can be shared, bookmarked
+  and reopened, and it renders on the server with no hydration wait on a phone.
+- **Filter options** (`src/lib/facets.ts`) are derived from the shop's own catalogue
+  rather than a fixed list, so a soul-only shop is never offered a "Classical" filter
+  that returns nothing.
+- **Presentation** (`src/lib/theme.ts`) holds every choice a shop can make about how
+  its storefront looks: colour theme, title bar, default layout and featured section.
+  Themes are applied as a `data-theme` attribute on the storefront wrapper only, so
+  the dashboard and marketing pages keep their own styling.
 - **Item detail pages** (`src/app/store/[slug]/item/[id]`) lazily fetch and cache
   full release details (genres, styles, tracklist, images, notes) the first time an
   item is viewed.
-- **Dashboard** (`src/app/dashboard`) lets a store manage its profile/branding,
-  Discogs connection, trigger syncs, generate its QR code, and hide/feature
-  individual items without touching the underlying Discogs listings.
+- **Dashboard** (`src/app/dashboard`) lets a store manage its profile, appearance,
+  locations and Discogs connection, trigger syncs, generate its QR code, and
+  hide/feature items in bulk without touching the underlying Discogs listings.
 
 ## Deployment (Render + Neon)
 

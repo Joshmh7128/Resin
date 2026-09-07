@@ -22,10 +22,15 @@ export async function storeMetadata(slug: string): Promise<Metadata> {
     select: {
       name: true,
       description: true,
-      city: true,
-      country: true,
       logoUrl: true,
       accentColor: true,
+      // A shop's main address is what places it for someone reading a shared
+      // link, so the first location stands in for the store's own location.
+      locations: {
+        orderBy: { sortOrder: "asc" },
+        take: 1,
+        select: { city: true, country: true },
+      },
     },
   });
 
@@ -41,7 +46,8 @@ export async function storeMetadata(slug: string): Promise<Metadata> {
     }),
   ]);
 
-  const place = [store.city, store.country].filter(Boolean).join(", ");
+  const primary = store.locations[0];
+  const place = [primary?.city, primary?.country].filter(Boolean).join(", ");
   const description =
     store.description ??
     `Browse ${itemCount.toLocaleString()} record${itemCount === 1 ? "" : "s"} for sale${

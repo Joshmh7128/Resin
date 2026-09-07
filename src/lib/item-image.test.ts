@@ -8,7 +8,7 @@ vi.mock("@/lib/discogs", async (importOriginal) => {
 });
 
 import { prisma } from "@/lib/prisma";
-import { fetchReleaseDetails } from "@/lib/discogs";
+import { fetchReleaseDetails, type DiscogsReleaseDetails } from "@/lib/discogs";
 import {
   resolveItemImage,
   startWarmingStore,
@@ -24,14 +24,17 @@ const STORE_SLUG = "image-test-store";
 let storeId: string;
 let nextListingId = 900_000_001;
 
-function releaseDetails(images: string[]) {
+function releaseDetails(images: string[]): DiscogsReleaseDetails {
   return {
     genres: ["Jazz"],
     styles: ["Modal"],
     images,
     notes: null,
     tracklist: [],
-    labels: [],
+    labels: ["Blue Note (BLP 4003)"],
+    labelNames: ["Blue Note"],
+    country: "US",
+    formats: ["Vinyl", "LP", "Album"],
   };
 }
 

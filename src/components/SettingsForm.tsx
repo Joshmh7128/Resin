@@ -91,18 +91,13 @@ export function SettingsForm({ store }: { store: SafeStore }) {
             className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-500 focus:outline-none"
           />
         </Field>
-        <Field label="Accent color" htmlFor="accentColor">
-          <input
-            id="accentColor"
-            name="accentColor"
-            type="color"
-            defaultValue={store.accentColor}
-            className="h-10 w-20 rounded-md border border-neutral-300"
-          />
-        </Field>
       </div>
 
-      <Field label="Description" htmlFor="description" hint="Shown at the top of your storefront">
+      <Field
+        label="Description"
+        htmlFor="description"
+        hint="One or two lines, used for search results and link previews. The longer story goes under Shop details."
+      >
         <textarea
           id="description"
           name="description"

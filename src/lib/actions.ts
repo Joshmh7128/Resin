@@ -15,6 +15,8 @@ import {
   settingsSchema,
   changePasswordSchema,
   shopDetailsSchema,
+  appearanceSchema,
+  locationSchema,
 } from "@/lib/validation";
 
 export interface FormState {
@@ -101,7 +103,6 @@ export async function updateSettingsAction(
     currency: formData.get("currency"),
     itemsPerPage: formData.get("itemsPerPage"),
     description: formData.get("description") ?? "",
-    accentColor: formData.get("accentColor"),
   });
 
   if (!parsed.success) {
@@ -133,7 +134,6 @@ export async function updateSettingsAction(
       currency: data.currency,
       itemsPerPage: data.itemsPerPage,
       description: data.description || null,
-      accentColor: data.accentColor,
     },
   });
 
@@ -291,12 +291,8 @@ export async function updateShopDetailsAction(
 
   const parsed = shopDetailsSchema.safeParse({
     logoUrl: formData.get("logoUrl") ?? "",
-    addressLine: formData.get("addressLine") ?? "",
-    city: formData.get("city") ?? "",
-    postcode: formData.get("postcode") ?? "",
-    country: formData.get("country") ?? "",
-    phone: formData.get("phone") ?? "",
-    openingHours: formData.get("openingHours") ?? "",
+    bannerUrl: formData.get("bannerUrl") ?? "",
+    aboutText: formData.get("aboutText") ?? "",
     websiteUrl: formData.get("websiteUrl") ?? "",
     instagramUrl: formData.get("instagramUrl") ?? "",
     facebookUrl: formData.get("facebookUrl") ?? "",
@@ -307,20 +303,14 @@ export async function updateShopDetailsAction(
     return { error: firstIssueMessage(parsed.error.issues) };
   }
 
-  // Store blanks as null so the storefront can simply skip empty details.
-  const blankToNull = (value?: string) => (value && value.trim() !== "" ? value.trim() : null);
   const d = parsed.data;
 
   await prisma.store.update({
     where: { id: store.id },
     data: {
       logoUrl: blankToNull(d.logoUrl),
-      addressLine: blankToNull(d.addressLine),
-      city: blankToNull(d.city),
-      postcode: blankToNull(d.postcode),
-      country: blankToNull(d.country),
-      phone: blankToNull(d.phone),
-      openingHours: blankToNull(d.openingHours),
+      bannerUrl: blankToNull(d.bannerUrl),
+      aboutText: blankToNull(d.aboutText),
       websiteUrl: blankToNull(d.websiteUrl),
       instagramUrl: blankToNull(d.instagramUrl),
       facebookUrl: blankToNull(d.facebookUrl),
@@ -328,7 +318,112 @@ export async function updateShopDetailsAction(
     },
   });
 
-  revalidatePath("/dashboard/settings");
-  revalidatePath(`/store/${store.slug}`);
+  revalidateStore(store.slug);
   return { success: "Shop details saved" };
+}
+
+/** Blank fields are stored as null so the storefront can simply skip them. */
+function blankToNull(value?: string | null): string | null {
+  return value && value.trim() !== "" ? value.trim() : null;
+}
+
+function revalidateStore(slug: string) {
+  revalidatePath("/dashboard/settings");
+  revalidatePath(`/store/${slug}`);
+}
+
+export async function updateAppearanceAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const store = await requireStore();
+
+  const parsed = appearanceSchema.safeParse({
+    theme: formData.get("theme"),
+    headerStyle: formData.get("headerStyle"),
+    defaultLayout: formData.get("defaultLayout"),
+    featuredLayout: formData.get("featuredLayout"),
+    accentColor: formData.get("accentColor"),
+  });
+
+  if (!parsed.success) {
+    return { error: firstIssueMessage(parsed.error.issues) };
+  }
+
+  await prisma.store.update({ where: { id: store.id }, data: parsed.data });
+
+  revalidateStore(store.slug);
+  return { success: "Appearance saved" };
+}
+
+/**
+ * Creates a location, or updates one when `locationId` is present.
+ *
+ * The id is checked against this store rather than trusted, so a posted form
+ * can't edit another shop's address.
+ */
+export async function saveLocationAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const store = await requireStore();
+
+  const parsed = locationSchema.safeParse({
+    label: formData.get("label") ?? "",
+    addressLine: formData.get("addressLine") ?? "",
+    city: formData.get("city") ?? "",
+    postcode: formData.get("postcode") ?? "",
+    country: formData.get("country") ?? "",
+    phone: formData.get("phone") ?? "",
+    openingHours: formData.get("openingHours") ?? "",
+  });
+
+  if (!parsed.success) {
+    return { error: firstIssueMessage(parsed.error.issues) };
+  }
+
+  const d = parsed.data;
+  const data = {
+    label: blankToNull(d.label),
+    addressLine: blankToNull(d.addressLine),
+    city: blankToNull(d.city),
+    postcode: blankToNull(d.postcode),
+    country: blankToNull(d.country),
+    phone: blankToNull(d.phone),
+    openingHours: blankToNull(d.openingHours),
+  };
+
+  if (Object.values(data).every((value) => value === null)) {
+    return { error: "Fill in at least one detail for this location" };
+  }
+
+  const locationId = formData.get("locationId");
+
+  if (typeof locationId === "string" && locationId) {
+    const updated = await prisma.storeLocation.updateMany({
+      where: { id: locationId, storeId: store.id },
+      data,
+    });
+    if (updated.count === 0) return { error: "That location no longer exists" };
+    revalidateStore(store.slug);
+    return { success: "Location saved" };
+  }
+
+  const count = await prisma.storeLocation.count({ where: { storeId: store.id } });
+  if (count >= 10) {
+    return { error: "You can list up to 10 locations" };
+  }
+
+  await prisma.storeLocation.create({
+    data: { ...data, storeId: store.id, sortOrder: count },
+  });
+
+  revalidateStore(store.slug);
+  return { success: "Location added" };
+}
+
+export async function deleteLocationAction(locationId: string): Promise<void> {
+  const store = await requireStore();
+  await prisma.storeLocation.deleteMany({ where: { id: locationId, storeId: store.id } });
+  revalidateStore(store.slug);
 }

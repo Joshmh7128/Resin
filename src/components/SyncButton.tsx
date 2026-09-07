@@ -106,9 +106,10 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
       {images.remaining > 0 && (
         <div className="max-w-sm space-y-1 pt-1">
           <p className="text-sm text-neutral-500">
-            {images.warming ? "Loading cover art:" : "Cover art paused:"}{" "}
+            {images.warming ? "Loading record details:" : "Record details paused:"}{" "}
             {images.resolved.toLocaleString()} of {images.total.toLocaleString()} done,{" "}
-            {images.remaining.toLocaleString()} to go.
+            {images.remaining.toLocaleString()} to go. This fills in cover art, genre, style,
+            label and pressing country, which is what your customers filter by.
             {images.warming && " Customers browsing the shop are served first, so this may slow down."}
           </p>
           <div
@@ -117,7 +118,7 @@ export function SyncButton({ initialStatus }: { initialStatus: SyncStatus }) {
             aria-valuenow={percent}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-label="Cover art loading progress"
+            aria-label="Record detail loading progress"
           >
             <div
               className="h-full bg-neutral-900 transition-all duration-500"

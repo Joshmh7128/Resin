@@ -52,6 +52,11 @@ See `.env.example` for the full template. Summary:
 - `NEXT_PUBLIC_BASE_URL` (optional): absolute base URL used when generating the
   storefront QR code. If unset, it's inferred from the request's `Host` header,
   which is fine for local dev but should be set explicitly in production.
+- `RESEND_API_KEY` / `MAIL_FROM` (optional): outbound email for password reset
+  links and premium expiry notices. Unset, those messages go to the server log
+  instead and the admin backend shows reset links on screen.
+- `CRON_SECRET` (optional): bearer token for the scheduled plan expiry sweep.
+  Unset, `POST /api/admin/premium-expiry` is disabled and the sweep is manual.
 
 ## How it works
 
@@ -73,6 +78,72 @@ See `.env.example` for the full template. Summary:
   Discogs connection, trigger syncs, generate its QR code, and hide/feature
   individual items without touching the underlying Discogs listings.
 
+## Accounts, plans, and the admin backend
+
+### For store owners
+
+- **Password reset**: `/forgot-password` emails a single-use link that expires in
+  an hour. The reply is the same whether or not the address has an account, so
+  the form can't be used to find out which shops are on Resin.
+- **Account page** (`/dashboard/account`): change the login email (current
+  password required), change the password, see the current plan, clear the
+  cached inventory, or delete the account. The last two ask for the store's URL
+  to be typed out first.
+
+### The admin backend
+
+`/admin` is the operator side: one signed-in admin can see every store, manage
+plans, and run the same actions an owner has. It uses its own session cookie and
+its own account table, so a store login can never reach it.
+
+There is no admin sign-up page and no admin password reset, on purpose. Admins
+are made from the command line, which is also the way back in if the last one is
+locked out:
+
+```bash
+npm run admin:create -- --email you@example.com --name "Your Name"
+```
+
+The first admin created is an `owner`, who can add and deactivate other admins
+from `/admin/admins`. Pass `--reset-password` to set a new password for an
+existing admin. With no `--password`, one is generated and printed once.
+
+From a store's page in the backend you can: grant or extend premium, set an
+end date directly, comp an account with no expiry, move it back to free, run a
+sync, reset the inventory cache, change the login email or storefront URL, issue
+a password reset link, set a password, clear a login lockout, open the owner's
+dashboard for support, suspend, and delete. Every one of those is written to an
+append-only audit log at `/admin/audit`, along with the automatic expiries.
+
+### Premium
+
+Payment isn't wired up yet: premium is granted by an operator, and `Store.plan`
+plus `Store.premiumUntil` is the whole record of it. Two rules matter:
+
+- **Entitlement is derived, never scheduled.** `isPremiumActive` in
+  `src/lib/plan.ts` reads the end date, so a store's premium lapses the moment
+  the date passes whether or not any job has run.
+- **Granted time is added, not replaced.** Extending an account that still has
+  time left pushes the end date out from where it was, so renewing early never
+  costs a store the days it already had. A lapsed store starts again from today.
+
+The scheduled sweep is the paperwork around that: it emails stores a week before
+their premium ends, moves lapsed ones back to the free plan, and writes the audit
+entry. Point a scheduler at it once a day:
+
+```bash
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://your-domain.com/api/admin/premium-expiry
+```
+
+It is safe to run late, twice, or not at all for a day, and an admin can run it
+by hand from `/admin`.
+
+### Suspension
+
+Suspending a store is the reversible step before deleting one: the owner can't
+log in, their storefront 404s, and nothing is deleted. Deleting removes the store
+and its cached items; the audit entry recording it stays.
+
 ## Deployment (Render + Neon)
 
 1. Create a [Neon](https://neon.tech) project and copy its (pooled) connection string.
@@ -87,6 +158,13 @@ See `.env.example` for the full template. Summary:
 5. Seed the demo store once, from your own machine, by pointing `DATABASE_URL` at
    the same Neon database and running `npm run seed` locally. Render's free tier
    can't run one-off shell jobs, but seeding doesn't need to run on Render itself.
+6. Create your admin account the same way: point `DATABASE_URL` at the Neon
+   database and run `npm run admin:create -- --email you@example.com --name "…"`
+   locally, then sign in at `/admin/login`.
+7. Optionally point a scheduler at `POST /api/admin/premium-expiry` once a day,
+   using the `CRON_SECRET` Render generated. Nothing breaks without it: premium
+   still expires on time, but the warning emails and the audit entries don't get
+   written until someone runs the sweep from `/admin`.
 
 Render's free tier sleeps after 15 minutes of inactivity (cold start on the next
 request); its paid Starter tier removes that entirely if it becomes worth $7/month.

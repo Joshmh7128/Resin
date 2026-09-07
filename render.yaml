@@ -38,3 +38,16 @@ services:
         sync: false
       - key: DISCOGS_CONSUMER_SECRET
         sync: false
+      # Bearer token for POST /api/admin/premium-expiry, the scheduled sweep
+      # that warns stores whose premium is nearly up and moves lapsed ones back
+      # to free. Generated here; copy it into whatever scheduler calls it.
+      # Without it the endpoint is disabled and the sweep is manual only.
+      - key: CRON_SECRET
+        generateValue: true
+      # Outbound email for password resets and expiry notices. Leave unset and
+      # those messages are only written to the log; the admin backend then
+      # shows reset links on screen instead.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false

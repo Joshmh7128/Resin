@@ -32,6 +32,77 @@ export const settingsSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #2563eb"),
 });
 
+export const emailSchema = z.string().email("Enter a valid email address");
+
+export const forgotPasswordSchema = z.object({
+  email: emailSchema,
+});
+
+export const resetPasswordSchema = z
+  .object({
+    token: z.string().min(1, "This reset link is missing its token"),
+    newPassword: z.string().min(8, "Password must be at least 8 characters"),
+    confirmPassword: z.string().min(1, "Please confirm the new password"),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
+export const changeEmailSchema = z.object({
+  email: emailSchema,
+  currentPassword: z.string().min(1, "Enter your current password to confirm"),
+});
+
+/**
+ * Destructive account actions ask for the store's URL to be typed out. The
+ * action compares what was typed against the store itself, so all the schema
+ * can check is that something was.
+ */
+export const confirmationSchema = z.object({
+  confirmation: z.string().min(1, "Type the store URL to confirm"),
+});
+
+// Admin backend.
+
+export const adminLoginSchema = z.object({
+  email: emailSchema,
+  password: z.string().min(1, "Password is required"),
+});
+
+export const adminUserSchema = z.object({
+  name: z.string().min(2, "Name is required").max(100),
+  email: emailSchema,
+  // Longer than the 8 a store needs: one of these can reach every account.
+  password: z.string().min(12, "Admin passwords must be at least 12 characters"),
+  role: z.enum(["admin", "owner"]),
+});
+
+export const grantPremiumSchema = z.object({
+  // Ten years is well past any plausible grant, and stops a typo in the
+  // custom-days box from comping an account into the next century.
+  days: z.coerce
+    .number()
+    .int()
+    .min(1, "Enter at least 1 day")
+    .max(3650, "That is more than 10 years"),
+  note: z.string().max(500).optional().or(z.literal("")),
+});
+
+export const premiumUntilSchema = z.object({
+  // <input type="date"> posts YYYY-MM-DD.
+  until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a date"),
+  note: z.string().max(500).optional().or(z.literal("")),
+});
+
+export const suspendSchema = z.object({
+  reason: z.string().max(500).optional().or(z.literal("")),
+});
+
+export const setPasswordSchema = z.object({
+  newPassword: z.string().min(8, "Password must be at least 8 characters"),
+});
+
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, "Current password is required"),

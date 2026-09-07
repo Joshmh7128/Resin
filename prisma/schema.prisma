@@ -30,6 +30,35 @@ model Store {
   accentColor      String   @default("#2563eb")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  // Billing plan. "free" or "premium". Payment isn't wired up yet: premium is
+  // granted by an operator from the admin backend, which is why the grant is
+  // recorded here rather than derived from a subscription record.
+  plan             String   @default("free")
+  // When the current premium period ends. Null while on the free plan, and
+  // null on premium means comped with no expiry (see `src/lib/plan.ts`).
+  premiumUntil     DateTime?
+  // When the store first became premium. Kept across renewals so the admin can
+  // see how long someone has been paying.
+  premiumSince     DateTime?
+  // Free-text operator note about the plan ("comped for feedback", invoice
+  // number, and so on).
+  planNote         String?
+  // Set once per premium period when an expiry warning email goes out, so the
+  // expiry job doesn't email the same store every time it runs.
+  expiryNoticeSentAt DateTime?
+
+  // Suspended stores can't log in and their storefront 404s, but their data is
+  // left untouched. Reversible, unlike deleting the account.
+  isSuspended      Boolean  @default(false)
+  suspendedReason  String?
+
+  lastLoginAt      DateTime?
+  // Throttles password guessing. Stored on the row rather than in memory so it
+  // survives restarts and works across instances.
+  failedLoginAttempts Int   @default(0)
+  lockedUntil      DateTime?
+
   lastSyncAt       DateTime?
   // "running" | "success" | "error". Set to "running" when a background sync is
   // claimed, so a second sync can't start on top of one already in flight.
@@ -39,9 +68,74 @@ model Store {
   // behind by a process that died mid-sync.
   syncStartedAt    DateTime?
 
-  items InventoryItem[]
+  items               InventoryItem[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([discogsUsername])
+  // Drives the admin's "who is paid up" queries: active, expiring, expired.
+  @@index([plan, premiumUntil])
+}
+
+/// An operator of Resin itself, not a store owner. Admins sign in at
+/// `/admin/login` against a separate session cookie, so a store session can
+/// never be mistaken for an admin one.
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  // "owner" can manage other admins; "admin" can manage stores only.
+  role         String   @default("admin")
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  failedLoginAttempts Int @default(0)
+  lockedUntil  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs AdminAuditLog[]
+}
+
+/// A single-use password reset link. Only the SHA-256 hash of the token is
+/// stored, so a leaked database row can't be redeemed.
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  // Set when an admin issued the link on the store's behalf rather than the
+  // store requesting it from the login page.
+  issuedByAdminId String?
+  createdAt DateTime @default(now())
+
+  @@index([storeId])
+  @@index([expiresAt])
+}
+
+/// Every state-changing admin action, plus the automated plan expiries. Kept
+/// deliberately denormalised (admin email, store slug) so the trail still reads
+/// correctly after the admin or the store it refers to has been deleted.
+model AdminAuditLog {
+  id          String     @id @default(cuid())
+  adminUserId String?
+  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+  // "system" for actions taken by the scheduled expiry job.
+  adminEmail  String
+  action      String
+  // Not a relation: the row must outlive the store, including when the action
+  // was deleting it.
+  targetStoreId   String?
+  targetStoreSlug String?
+  summary     String
+  /// JSON blob of action-specific detail (previous values, days granted, ...).
+  metadata    String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([targetStoreId])
+  @@index([action])
 }
 
 model InventoryItem {

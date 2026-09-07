@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "prisma db seed",
+    "admin:create": "tsx --env-file-if-exists=.env scripts/create-admin.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -32,7 +32,8 @@ export default async function ItemDetailPage({
   const { slug, id } = await params;
 
   const store = await prisma.store.findUnique({ where: { slug } });
-  if (!store) notFound();
+  // A suspended store is hidden from customers as well as its owner.
+  if (!store || store.isSuspended) notFound();
 
   const item = await prisma.inventoryItem.findFirst({
     where: { id, storeId: store.id, isVisible: true },

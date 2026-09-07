@@ -35,7 +35,8 @@ export default async function StorefrontPage({
   const sp = await searchParams;
 
   const store = await prisma.store.findUnique({ where: { slug } });
-  if (!store) notFound();
+  // A suspended store is hidden from customers as well as its owner.
+  if (!store || store.isSuspended) notFound();
 
   const q = sp.q?.trim() ?? "";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);

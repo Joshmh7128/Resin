@@ -9,11 +9,24 @@ import { requireStore } from "@/lib/auth";
 import { startInventorySync, isSyncRunning } from "@/lib/sync";
 import { getImageProgress, type ImageProgress } from "@/lib/item-image";
 import { verifyDiscogsUsername } from "@/lib/discogs";
+import { isLockedOut, afterFailedAttempt, lockoutMessage } from "@/lib/lockout";
+import { resetStoreInventory, deleteStoreAccount, changeStoreEmail } from "@/lib/account";
+import {
+  createPasswordResetToken,
+  consumePasswordResetToken,
+  passwordResetUrl,
+  passwordResetEmail,
+} from "@/lib/password-reset";
+import { sendMail } from "@/lib/mailer";
+import { getBaseUrl } from "@/lib/url";
 import {
   signupSchema,
   loginSchema,
   settingsSchema,
   changePasswordSchema,
+  changeEmailSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 } from "@/lib/validation";
 
 export interface FormState {
@@ -38,7 +51,10 @@ export async function signupAction(_prev: FormState, formData: FormData): Promis
     return { error: firstIssueMessage(parsed.error.issues) };
   }
 
-  const { name, email, password, discogsUsername, slug } = parsed.data;
+  const { name, password, discogsUsername, slug } = parsed.data;
+  // Stored lower-cased so the login lookup, which is case-sensitive in
+  // Postgres, matches however the owner types their address later.
+  const email = parsed.data.email.trim().toLowerCase();
 
   const [existingEmail, existingSlug] = await Promise.all([
     prisma.store.findUnique({ where: { email } }),
@@ -70,15 +86,82 @@ export async function loginAction(_prev: FormState, formData: FormData): Promise
     return { error: firstIssueMessage(parsed.error.issues) };
   }
 
-  const { email, password } = parsed.data;
+  const { password } = parsed.data;
+  const email = parsed.data.email.trim().toLowerCase();
   const store = await prisma.store.findUnique({ where: { email } });
   if (!store) return { error: "Invalid email or password" };
 
+  if (isLockedOut(store) && store.lockedUntil) {
+    return { error: lockoutMessage(store.lockedUntil) };
+  }
+
   const valid = await verifyPassword(password, store.passwordHash);
-  if (!valid) return { error: "Invalid email or password" };
+  if (!valid) {
+    await prisma.store.update({ where: { id: store.id }, data: afterFailedAttempt(store) });
+    return { error: "Invalid email or password" };
+  }
+
+  // Checked after the password, so a suspension can't be discovered by anyone
+  // who doesn't already have the account's credentials.
+  if (store.isSuspended) {
+    return {
+      error: store.suspendedReason
+        ? `This account is suspended: ${store.suspendedReason}`
+        : "This account is suspended. Get in touch if you think that's a mistake.",
+    };
+  }
+
+  await prisma.store.update({
+    where: { id: store.id },
+    data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null },
+  });
 
   await setSessionCookie(store.id);
   redirect("/dashboard");
+}
+
+/**
+ * Starts a password reset. Always reports success, whether or not the address
+ * belongs to a store: the reply to this form is public, and saying "no such
+ * account" would turn it into a way to test which shops are on Resin.
+ */
+export async function requestPasswordResetAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = forgotPasswordSchema.safeParse({ email: formData.get("email") });
+  if (!parsed.success) return { error: firstIssueMessage(parsed.error.issues) };
+
+  const email = parsed.data.email.trim().toLowerCase();
+  const store = await prisma.store.findUnique({ where: { email } });
+
+  if (store && !store.isSuspended) {
+    const { token } = await createPasswordResetToken(store.id);
+    const url = passwordResetUrl(await getBaseUrl(), token);
+    await sendMail({ to: store.email, ...passwordResetEmail(store.name, url) });
+  }
+
+  return {
+    success:
+      "If that address has an account, a reset link is on its way. It expires in an hour.",
+  };
+}
+
+export async function resetPasswordAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = resetPasswordSchema.safeParse({
+    token: formData.get("token"),
+    newPassword: formData.get("newPassword"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+  if (!parsed.success) return { error: firstIssueMessage(parsed.error.issues) };
+
+  const result = await consumePasswordResetToken(parsed.data.token, parsed.data.newPassword);
+  if (!result.ok) return { error: result.error };
+
+  redirect("/login?reset=1");
 }
 
 export async function logoutAction(): Promise<void> {
@@ -234,4 +317,84 @@ export async function toggleItemFeaturedAction(itemId: string): Promise<void> {
   });
   revalidatePath("/dashboard/inventory");
   revalidatePath(`/store/${store.slug}`);
+}
+
+/**
+ * Changes the address the owner logs in with. The current password is required:
+ * this is the one setting that decides where a reset link goes, so a borrowed
+ * session shouldn't be able to change it.
+ */
+export async function changeEmailAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const store = await requireStore();
+  const full = await prisma.store.findUniqueOrThrow({ where: { id: store.id } });
+
+  const parsed = changeEmailSchema.safeParse({
+    email: formData.get("email"),
+    currentPassword: formData.get("currentPassword"),
+  });
+  if (!parsed.success) return { error: firstIssueMessage(parsed.error.issues) };
+
+  const valid = await verifyPassword(parsed.data.currentPassword, full.passwordHash);
+  if (!valid) return { error: "Current password is incorrect" };
+
+  const result = await changeStoreEmail(store.id, parsed.data.email);
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/dashboard/account");
+  return { success: "Login email updated" };
+}
+
+/**
+ * Clears the store's cached listings so the next sync rebuilds from scratch.
+ * Nothing on Discogs is touched, but hidden and featured flags go with the
+ * items, so the owner has to type their store URL to confirm.
+ */
+export async function resetInventoryAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const store = await requireStore();
+
+  if (formData.get("confirmation") !== store.slug) {
+    return { error: `Type "${store.slug}" to confirm.` };
+  }
+
+  const result = await resetStoreInventory(store.id);
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/inventory");
+  revalidatePath(`/store/${store.slug}`);
+  return {
+    success: `Removed ${result.value.removed} items. Run a sync to pull them back from Discogs.`,
+  };
+}
+
+/** Deletes the store and everything cached for it. Password plus slug required. */
+export async function deleteAccountAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const store = await requireStore();
+  const full = await prisma.store.findUniqueOrThrow({ where: { id: store.id } });
+
+  const currentPassword = formData.get("currentPassword");
+  if (typeof currentPassword !== "string" || !currentPassword) {
+    return { error: "Enter your password to confirm" };
+  }
+  if (formData.get("confirmation") !== store.slug) {
+    return { error: `Type "${store.slug}" to confirm.` };
+  }
+
+  const valid = await verifyPassword(currentPassword, full.passwordHash);
+  if (!valid) return { error: "Password is incorrect" };
+
+  const result = await deleteStoreAccount(store.id);
+  if (!result.ok) return { error: result.error };
+
+  await clearSessionCookie();
+  redirect("/?deleted=1");
 }

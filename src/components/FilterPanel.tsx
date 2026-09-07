@@ -151,7 +151,11 @@ export function FilterPanel({
           </p>
         )}
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        {/* Pinned to the bottom of the panel's own scroll area. Nothing here
+            applies until it's pressed, so having to scroll past every filter
+            group to find it is how someone ends up ticking boxes and then
+            navigating away wondering why nothing changed. */}
+        <div className="sticky bottom-0 -mx-3 -mb-3 mt-4 flex flex-wrap items-center gap-2 border-t border-st-border bg-st-surface px-3 py-3 sm:-mx-4 sm:-mb-4 sm:px-4">
           <button
             type="submit"
             className="rounded-full bg-st-accent px-4 py-2 text-sm font-semibold text-st-accent-fg"
@@ -192,8 +196,13 @@ function FacetGroup({
         {FACET_LABELS[facetKey]}
       </legend>
       <div
+        // Only scrolls within itself from the tablet breakpoint up, where the
+        // groups sit side by side and a long one would stretch the row. On a
+        // phone the panel is already one scrolling column, and a scroll area
+        // inside a scroll area means a swipe that starts on a list of genres
+        // moves the wrong thing.
         className={`mt-1 space-y-1.5 ${
-          values.length > SCROLL_AFTER ? "max-h-52 overflow-y-auto pr-1" : ""
+          values.length > SCROLL_AFTER ? "sm:max-h-52 sm:overflow-y-auto sm:pr-1" : ""
         }`}
       >
         {values.map((option) => (

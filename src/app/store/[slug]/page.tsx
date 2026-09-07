@@ -109,9 +109,25 @@ export default async function StorefrontPage({
           layout={presentation.featuredLayout}
         />
 
-        {/* Sticky so search, filters and sort stay reachable while scrolling a
-            long catalogue, which on a phone is the whole point. */}
-        <div className="sticky top-0 z-20 -mx-4 mb-5 border-b border-st-border bg-st-bg/90 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 sm:py-4">
+        {/*
+          Sticky so search, filters and sort stay reachable while scrolling a
+          long catalogue, which on a phone is the whole point.
+
+          It stops being sticky while the filter panel is open, though. A sticky
+          element taller than the viewport pins its top and leaves everything
+          past the fold unreachable: on a phone the lower filter groups and the
+          Apply button ran off the bottom of the screen with no way to scroll to
+          them. Going static while open lets the panel expand in normal flow and
+          the page scroll the way it would anywhere else, with no scroll area
+          nested inside another.
+
+          `has-[details[open]]` reads the panel's own open state, so this needs
+          no JavaScript and works before hydration, like the panel itself. The
+          height cap is the fallback for a browser without `:has()`: the bar
+          scrolls within itself instead, which is worse to use but still reaches
+          every filter. `dvh` accounts for a phone's moving browser chrome.
+        */}
+        <div className="sticky top-0 z-20 -mx-4 mb-5 max-h-dvh overflow-y-auto overscroll-contain border-b border-st-border bg-st-bg/90 px-4 py-3 backdrop-blur has-[details[open]]:static has-[details[open]]:max-h-none has-[details[open]]:overflow-visible sm:-mx-6 sm:px-6 sm:py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <SearchForm
               action={basePath}

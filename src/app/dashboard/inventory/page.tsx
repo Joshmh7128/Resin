@@ -1,11 +1,8 @@
-import Image from "next/image";
 import { requireStore } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { formatPrice } from "@/lib/format";
 import { SearchForm } from "@/components/SearchForm";
 import { Pagination } from "@/components/Pagination";
-import { ToggleSwitch } from "@/components/ToggleSwitch";
-import { toggleItemVisibilityAction, toggleItemFeaturedAction } from "@/lib/actions";
+import { InventoryTable } from "@/components/InventoryTable";
 
 const PAGE_SIZE = 25;
 
@@ -33,6 +30,18 @@ export default async function InventoryPage({
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
+      select: {
+        id: true,
+        title: true,
+        artist: true,
+        condition: true,
+        price: true,
+        priceCurrency: true,
+        imageUrl: true,
+        thumbUrl: true,
+        isVisible: true,
+        isFeatured: true,
+      },
     }),
   ]);
 
@@ -43,8 +52,9 @@ export default async function InventoryPage({
       <div>
         <h1 className="text-2xl font-bold text-neutral-900">Inventory</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          {total} item{total === 1 ? "" : "s"} synced from Discogs. Hide items you don&apos;t
-          want shown, or feature your best finds.
+          {total.toLocaleString()} item{total === 1 ? "" : "s"} synced from Discogs. Tick
+          items to change several at once, or use the toggles to hide something or feature
+          your best finds.
         </p>
       </div>
 
@@ -57,67 +67,7 @@ export default async function InventoryPage({
             : "No items match your search."}
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
-              <tr>
-                <th className="px-4 py-3">Item</th>
-                <th className="px-4 py-3">Condition</th>
-                <th className="px-4 py-3">Price</th>
-                <th className="px-4 py-3">Visible</th>
-                <th className="px-4 py-3">Featured</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td className="flex items-center gap-3 px-4 py-3">
-                    {item.thumbUrl ?? item.imageUrl ? (
-                      <Image
-                        src={(item.thumbUrl ?? item.imageUrl)!}
-                        alt=""
-                        width={40}
-                        height={40}
-                        unoptimized
-                        className="h-10 w-10 rounded object-cover"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded bg-neutral-100" />
-                    )}
-                    <div>
-                      <p className="font-medium text-neutral-900">{item.title}</p>
-                      <p className="text-neutral-500">{item.artist}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-neutral-600">
-                    {item.condition ?? "Not listed"}
-                  </td>
-                  <td className="px-4 py-3 text-neutral-600">
-                    {formatPrice(item.price, item.priceCurrency)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <ToggleSwitch
-                      id={item.id}
-                      active={item.isVisible}
-                      action={toggleItemVisibilityAction}
-                      labelOn="Visible"
-                      labelOff="Hidden"
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <ToggleSwitch
-                      id={item.id}
-                      active={item.isFeatured}
-                      action={toggleItemFeaturedAction}
-                      labelOn="Featured"
-                      labelOff="Not featured"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <InventoryTable items={items} />
       )}
 
       <Pagination

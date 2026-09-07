@@ -27,6 +27,10 @@ import {
   changeEmailSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  shopDetailsSchema,
+  partialAppearanceSchema,
+  APPEARANCE_KEYS,
+  locationSchema,
 } from "@/lib/validation";
 
 export interface FormState {
@@ -183,7 +187,6 @@ export async function updateSettingsAction(
     currency: formData.get("currency"),
     itemsPerPage: formData.get("itemsPerPage"),
     description: formData.get("description") ?? "",
-    accentColor: formData.get("accentColor"),
   });
 
   if (!parsed.success) {
@@ -215,7 +218,6 @@ export async function updateSettingsAction(
       currency: data.currency,
       itemsPerPage: data.itemsPerPage,
       description: data.description || null,
-      accentColor: data.accentColor,
     },
   });
 
@@ -397,4 +399,206 @@ export async function deleteAccountAction(
 
   await clearSessionCookie();
   redirect("/?deleted=1");
+}
+
+export type BulkItemAction = "show" | "hide" | "feature" | "unfeature";
+
+const BULK_ACTION_DATA: Record<BulkItemAction, { isVisible?: boolean; isFeatured?: boolean }> = {
+  show: { isVisible: true },
+  hide: { isVisible: false },
+  feature: { isFeatured: true },
+  unfeature: { isFeatured: false },
+};
+
+/**
+ * Applies one change to many items at once. Managing a 1,500 item catalogue a
+ * click at a time isn't realistic, and Discogs' own inventory tools offer bulk
+ * changes.
+ */
+export async function bulkUpdateItemsAction(
+  itemIds: string[],
+  action: BulkItemAction,
+): Promise<FormState> {
+  const store = await requireStore();
+
+  const data = BULK_ACTION_DATA[action];
+  if (!data) return { error: "Unknown action" };
+  if (itemIds.length === 0) return { error: "No items selected" };
+
+  // Scoped to this store, so a crafted id list can't touch another store's items.
+  const result = await prisma.inventoryItem.updateMany({
+    where: { id: { in: itemIds }, storeId: store.id },
+    data,
+  });
+
+  revalidatePath("/dashboard/inventory");
+  revalidatePath(`/store/${store.slug}`);
+
+  const verb =
+    action === "show"
+      ? "shown"
+      : action === "hide"
+        ? "hidden"
+        : action === "feature"
+          ? "featured"
+          : "unfeatured";
+  return {
+    success: `${result.count} item${result.count === 1 ? "" : "s"} ${verb}`,
+  };
+}
+
+export async function updateShopDetailsAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const store = await requireStore();
+
+  const parsed = shopDetailsSchema.safeParse({
+    logoUrl: formData.get("logoUrl") ?? "",
+    bannerUrl: formData.get("bannerUrl") ?? "",
+    aboutText: formData.get("aboutText") ?? "",
+    websiteUrl: formData.get("websiteUrl") ?? "",
+    instagramUrl: formData.get("instagramUrl") ?? "",
+    facebookUrl: formData.get("facebookUrl") ?? "",
+    bandcampUrl: formData.get("bandcampUrl") ?? "",
+    otherUrl: formData.get("otherUrl") ?? "",
+    otherLabel: formData.get("otherLabel") ?? "",
+  });
+
+  if (!parsed.success) {
+    return { error: firstIssueMessage(parsed.error.issues) };
+  }
+
+  const d = parsed.data;
+
+  await prisma.store.update({
+    where: { id: store.id },
+    data: {
+      logoUrl: blankToNull(d.logoUrl),
+      bannerUrl: blankToNull(d.bannerUrl),
+      aboutText: blankToNull(d.aboutText),
+      websiteUrl: blankToNull(d.websiteUrl),
+      instagramUrl: blankToNull(d.instagramUrl),
+      facebookUrl: blankToNull(d.facebookUrl),
+      bandcampUrl: blankToNull(d.bandcampUrl),
+      otherUrl: blankToNull(d.otherUrl),
+      // A label with no link behind it would never be shown, so drop it.
+      otherLabel: d.otherUrl ? blankToNull(d.otherLabel) : null,
+    },
+  });
+
+  revalidateStore(store.slug);
+  return { success: "Saved. Your storefront is updated." };
+}
+
+/** Blank fields are stored as null so the storefront can simply skip them. */
+function blankToNull(value?: string | null): string | null {
+  return value && value.trim() !== "" ? value.trim() : null;
+}
+
+function revalidateStore(slug: string) {
+  revalidatePath("/dashboard/settings");
+  revalidatePath(`/store/${slug}`);
+}
+
+export async function updateAppearanceAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const store = await requireStore();
+
+  // Each appearance section is its own form with its own save button, so only
+  // the fields that form owns are posted. Anything absent is left as it is
+  // rather than being blanked by a save from another section.
+  const submitted: Record<string, unknown> = {};
+  for (const key of APPEARANCE_KEYS) {
+    const value = formData.get(key);
+    if (typeof value === "string") submitted[key] = value;
+  }
+
+  if (Object.keys(submitted).length === 0) {
+    return { error: "Nothing to save" };
+  }
+
+  const parsed = partialAppearanceSchema.safeParse(submitted);
+  if (!parsed.success) {
+    return { error: firstIssueMessage(parsed.error.issues) };
+  }
+
+  await prisma.store.update({ where: { id: store.id }, data: parsed.data });
+
+  revalidateStore(store.slug);
+  return { success: "Saved. Your storefront is updated." };
+}
+
+/**
+ * Creates a location, or updates one when `locationId` is present.
+ *
+ * The id is checked against this store rather than trusted, so a posted form
+ * can't edit another shop's address.
+ */
+export async function saveLocationAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const store = await requireStore();
+
+  const parsed = locationSchema.safeParse({
+    label: formData.get("label") ?? "",
+    addressLine: formData.get("addressLine") ?? "",
+    city: formData.get("city") ?? "",
+    postcode: formData.get("postcode") ?? "",
+    country: formData.get("country") ?? "",
+    phone: formData.get("phone") ?? "",
+    openingHours: formData.get("openingHours") ?? "",
+  });
+
+  if (!parsed.success) {
+    return { error: firstIssueMessage(parsed.error.issues) };
+  }
+
+  const d = parsed.data;
+  const data = {
+    label: blankToNull(d.label),
+    addressLine: blankToNull(d.addressLine),
+    city: blankToNull(d.city),
+    postcode: blankToNull(d.postcode),
+    country: blankToNull(d.country),
+    phone: blankToNull(d.phone),
+    openingHours: blankToNull(d.openingHours),
+  };
+
+  if (Object.values(data).every((value) => value === null)) {
+    return { error: "Fill in at least one detail for this location" };
+  }
+
+  const locationId = formData.get("locationId");
+
+  if (typeof locationId === "string" && locationId) {
+    const updated = await prisma.storeLocation.updateMany({
+      where: { id: locationId, storeId: store.id },
+      data,
+    });
+    if (updated.count === 0) return { error: "That location no longer exists" };
+    revalidateStore(store.slug);
+    return { success: "Location saved" };
+  }
+
+  const count = await prisma.storeLocation.count({ where: { storeId: store.id } });
+  if (count >= 10) {
+    return { error: "You can list up to 10 locations" };
+  }
+
+  await prisma.storeLocation.create({
+    data: { ...data, storeId: store.id, sortOrder: count },
+  });
+
+  revalidateStore(store.slug);
+  return { success: "Location added" };
+}
+
+export async function deleteLocationAction(locationId: string): Promise<void> {
+  const store = await requireStore();
+  await prisma.storeLocation.deleteMany({ where: { id: locationId, storeId: store.id } });
+  revalidateStore(store.slug);
 }

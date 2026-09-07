@@ -1,32 +1,41 @@
 "use client";
 
-const SORT_LABELS: Record<string, string> = {
-  newest: "Recently listed",
-  price_asc: "Price: low to high",
-  price_desc: "Price: high to low",
-  title_asc: "Title: A–Z",
-};
+import { useRouter } from "next/navigation";
 
-export function SortSelect({ slug, q, sort }: { slug: string; q: string; sort: string }) {
+/**
+ * Sort control.
+ *
+ * Each option carries the URL it leads to, built on the server from the current
+ * filters, so choosing a sort can never drop the rest of the query. Rendered as
+ * a real select because a phone gets the native picker, and it degrades to a
+ * no-op rather than a broken control if the JavaScript hasn't arrived.
+ */
+export function SortSelect({
+  options,
+  value,
+}: {
+  options: { value: string; label: string; href: string }[];
+  value: string;
+}) {
+  const router = useRouter();
+
   return (
-    <form action={`/store/${slug}`} method="GET" className="flex items-center gap-2 text-sm">
-      {q && <input type="hidden" name="q" value={q} />}
-      <label htmlFor="sort" className="text-neutral-500">
-        Sort by
-      </label>
+    <label className="flex min-w-0 items-center gap-2 text-sm">
+      <span className="sr-only">Sort by</span>
       <select
-        id="sort"
-        name="sort"
-        defaultValue={sort}
-        onChange={(e) => e.currentTarget.form?.requestSubmit()}
-        className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
+        value={value}
+        onChange={(event) => {
+          const next = options.find((option) => option.value === event.target.value);
+          if (next) router.push(next.href);
+        }}
+        className="min-w-0 rounded-md border border-st-border bg-st-surface px-2 py-1.5 text-sm text-st-fg"
       >
-        {Object.entries(SORT_LABELS).map(([key, label]) => (
-          <option key={key} value={key}>
-            {label}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </select>
-    </form>
+    </label>
   );
 }

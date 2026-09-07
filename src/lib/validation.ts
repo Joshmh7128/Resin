@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  FEATURED_LAYOUT_IDS,
+  HEADER_STYLE_IDS,
+  LAYOUT_IDS,
+  THEME_IDS,
+} from "@/lib/theme";
 
 export const slugSchema = z
   .string()
@@ -27,9 +33,6 @@ export const settingsSchema = z.object({
   currency: z.string().min(1).max(10),
   itemsPerPage: z.coerce.number().int().min(6).max(96),
   description: z.string().max(1000).optional().or(z.literal("")),
-  accentColor: z
-    .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #2563eb"),
 });
 
 export const emailSchema = z.string().email("Enter a valid email address");
@@ -102,6 +105,80 @@ export const suspendSchema = z.object({
 export const setPasswordSchema = z.object({
   newPassword: z.string().min(8, "Password must be at least 8 characters"),
 });
+
+/** Blank is always allowed: every shop detail is optional. */
+const optionalText = (max: number) => z.string().max(max).optional().or(z.literal(""));
+
+/**
+ * Only http(s) URLs are accepted. These values are rendered as links on a public
+ * page, so allowing arbitrary schemes would let a store put `javascript:` behind
+ * a link customers click.
+ */
+const optionalUrl = (label: string) =>
+  z
+    .union([
+      z.literal(""),
+      z
+        .string()
+        .trim()
+        .url(`Enter a full ${label} address, starting with https://`)
+        .refine(
+          (value) => /^https?:\/\//i.test(value),
+          `Enter a full ${label} address, starting with https://`,
+        ),
+    ])
+    .optional();
+
+export const shopDetailsSchema = z.object({
+  logoUrl: optionalUrl("profile picture"),
+  bannerUrl: optionalUrl("banner image"),
+  aboutText: optionalText(2000),
+  websiteUrl: optionalUrl("website"),
+  instagramUrl: optionalUrl("Instagram"),
+  facebookUrl: optionalUrl("Facebook"),
+  bandcampUrl: optionalUrl("Bandcamp"),
+  otherUrl: optionalUrl("link"),
+  otherLabel: optionalText(30),
+});
+
+/**
+ * A single trading address. Shops can have several, so this validates one at a
+ * time; everything is optional because an online-only shop still wants the rest
+ * of its about section.
+ */
+export const locationSchema = z.object({
+  label: optionalText(60),
+  addressLine: optionalText(200),
+  city: optionalText(100),
+  postcode: optionalText(20),
+  country: optionalText(100),
+  phone: optionalText(40),
+  openingHours: optionalText(500),
+});
+
+/**
+ * How a shop's storefront looks. Each value is checked against the options the
+ * app actually implements rather than stored as free text, so a hand-posted
+ * form can't leave a store rendering with no theme at all.
+ */
+const appearanceFields = {
+  theme: z.enum(THEME_IDS),
+  headerStyle: z.enum(HEADER_STYLE_IDS),
+  defaultLayout: z.enum(LAYOUT_IDS),
+  featuredLayout: z.enum(FEATURED_LAYOUT_IDS),
+  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a hex color like #2563eb"),
+};
+
+export const appearanceSchema = z.object(appearanceFields);
+
+/**
+ * The appearance settings are saved a section at a time, each with its own
+ * preview and its own save button, so a form posts only the fields it owns.
+ * Anything absent is left alone rather than overwritten with a blank.
+ */
+export const partialAppearanceSchema = z.object(appearanceFields).partial();
+
+export const APPEARANCE_KEYS = Object.keys(appearanceFields) as (keyof typeof appearanceFields)[];
 
 export const changePasswordSchema = z
   .object({

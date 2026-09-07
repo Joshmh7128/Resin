@@ -28,6 +28,32 @@ model Store {
   logoUrl          String?
   description      String?
   accentColor      String   @default("#2563eb")
+
+  websiteUrl       String?
+  instagramUrl     String?
+  facebookUrl      String?
+  bandcampUrl      String?
+  /** One free-form link for anywhere else a shop sells or posts. */
+  otherUrl         String?
+  /** What to call that link. Falls back to its domain when left blank. */
+  otherLabel       String?
+
+  // Presentation. Stores are browsed mostly on phones, so how the shop chooses
+  // to lay itself out matters more than any single default we could pick.
+  /** light | dark | sepia | monochrome | midnight | amoled */
+  theme            String   @default("light")
+  /** compact | banner. Compact keeps the masthead to one row. */
+  headerStyle      String   @default("compact")
+  /** grid | list | coverflow. The layout a customer sees first. */
+  defaultLayout    String   @default("grid")
+  /** carousel | grid | list */
+  featuredLayout   String   @default("carousel")
+  /** Wide image across the top of the storefront, used by the banner header. */
+  bannerUrl        String?
+  /** Longer "about the shop" copy, shown in the expandable section. The short
+      `description` is what appears in search results and link previews. */
+  aboutText        String?
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -69,6 +95,7 @@ model Store {
   syncStartedAt    DateTime?
 
   items               InventoryItem[]
+  locations           StoreLocation[]
   passwordResetTokens PasswordResetToken[]
 
   @@index([discogsUsername])
@@ -138,6 +165,35 @@ model AdminAuditLog {
   @@index([action])
 }
 
+/**
+ * A shop can trade from more than one address, so locations are their own rows
+ * rather than columns on Store. Everything is optional: an online-only shop
+ * simply has none.
+ */
+model StoreLocation {
+  id           String  @id @default(cuid())
+  storeId      String
+  store        Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  /** Shown as a heading when a shop has several, e.g. "Camden" or "Warehouse". */
+  label        String?
+  addressLine  String?
+  city         String?
+  postcode     String?
+  country      String?
+  phone        String?
+  /** Free text, one line per day, so shops can write "Closed Mondays" and the
+      like without fighting a structured form. */
+  openingHours String?
+  /** Controls display order; lowest first. */
+  sortOrder    Int     @default(0)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([storeId, sortOrder])
+}
+
 model InventoryItem {
   id                 String   @id @default(cuid())
   storeId            String
@@ -167,6 +223,18 @@ model InventoryItem {
   status             String?
   searchText         String
 
+  /**
+   * Which generation of release data this item holds.
+   *
+   * The release lookup is the expensive part of a sync, so it only runs once
+   * per item. When we start storing something new from a release (a pressing
+   * country, say), already-looked-up items would otherwise never gain it and
+   * the new filter would only work for shops that joined afterwards. Bumping
+   * `DETAIL_VERSION` in `src/lib/item-image.ts` makes the background warm pick
+   * those items back up, at its usual low priority.
+   */
+  detailVersion      Int      @default(0)
+
   isVisible          Boolean  @default(true)
   isFeatured         Boolean  @default(false)
 
@@ -178,4 +246,5 @@ model InventoryItem {
   @@unique([storeId, listingId])
   @@index([storeId, isVisible])
   @@index([storeId, isFeatured])
+  @@index([storeId, detailVersion])
 }

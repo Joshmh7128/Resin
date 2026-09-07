@@ -5,15 +5,145 @@
   --foreground: #171717;
 }
 
+/*
+ * Storefront themes.
+ *
+ * Shops pick one of these and it is applied by putting `data-theme` on the
+ * storefront wrapper, so the dashboard and marketing pages keep their own
+ * styling regardless of what a store chose. Every token is defined on each
+ * theme rather than inherited, so switching themes can never leave a colour
+ * behind from the previous one.
+ *
+ * `--st-accent` is not set here: it comes from the shop's own accent colour as
+ * an inline style on the same element.
+ */
+[data-theme] {
+  --st-bg: #fafafa;
+  --st-surface: #ffffff;
+  --st-surface-2: #f4f4f5;
+  --st-fg: #171717;
+  --st-muted: #52525b;
+  --st-faint: #a1a1aa;
+  --st-border: #e4e4e7;
+  --st-shadow: rgb(0 0 0 / 0.08);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --st-bg: #101114;
+  --st-surface: #191b20;
+  --st-surface-2: #22252c;
+  --st-fg: #f4f4f5;
+  --st-muted: #a1a1aa;
+  --st-faint: #71717a;
+  --st-border: #2c3038;
+  --st-shadow: rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
+
+[data-theme="sepia"] {
+  --st-bg: #f4ecd8;
+  --st-surface: #fbf5e6;
+  --st-surface-2: #efe3c8;
+  --st-fg: #3b2f22;
+  --st-muted: #6b5a45;
+  --st-faint: #93826a;
+  --st-border: #ded0b0;
+  --st-shadow: rgb(59 47 34 / 0.12);
+  color-scheme: light;
+}
+
+[data-theme="monochrome"] {
+  --st-bg: #ffffff;
+  --st-surface: #ffffff;
+  --st-surface-2: #f2f2f2;
+  --st-fg: #111111;
+  --st-muted: #555555;
+  --st-faint: #8a8a8a;
+  --st-border: #d4d4d4;
+  --st-shadow: rgb(0 0 0 / 0.1);
+  color-scheme: light;
+}
+
+[data-theme="midnight"] {
+  --st-bg: #0b1220;
+  --st-surface: #121b2e;
+  --st-surface-2: #1b2740;
+  --st-fg: #e8eefc;
+  --st-muted: #9fb0cd;
+  --st-faint: #6f82a3;
+  --st-border: #22304d;
+  --st-shadow: rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
+
+[data-theme="amoled"] {
+  --st-bg: #000000;
+  --st-surface: #000000;
+  --st-surface-2: #0d0d0d;
+  --st-fg: #ffffff;
+  --st-muted: #a3a3a3;
+  --st-faint: #6b6b6b;
+  --st-border: #232323;
+  --st-shadow: rgb(255 255 255 / 0.06);
+  color-scheme: dark;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Themed storefront palette, e.g. `bg-st-surface`, `text-st-muted`. */
+  --color-st-bg: var(--st-bg);
+  --color-st-surface: var(--st-surface);
+  --color-st-surface-2: var(--st-surface-2);
+  --color-st-fg: var(--st-fg);
+  --color-st-muted: var(--st-muted);
+  --color-st-faint: var(--st-faint);
+  --color-st-border: var(--st-border);
+  --color-st-accent: var(--st-accent);
+  --color-st-accent-fg: var(--st-accent-fg);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/*
+ * Horizontal rails (featured carousel, cover flow) scroll by touch. Hiding the
+ * scrollbar keeps a full-bleed row of covers from being cut by a grey track on
+ * desktop; the row is still keyboard scrollable and shows arrow buttons.
+ */
+.st-rail {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.st-rail::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * Cover flow. The tilt is applied per item by the client component as it
+ * scrolls; these rules only set up the shared 3D context so the transforms
+ * have somewhere to project into.
+ */
+.st-coverflow {
+  perspective: 1200px;
+  perspective-origin: 50% 45%;
+}
+.st-coverflow-item {
+  transform-style: preserve-3d;
+  transition: transform 120ms linear, opacity 120ms linear;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-coverflow-item {
+    transition: none;
+    transform: none !important;
+  }
 }

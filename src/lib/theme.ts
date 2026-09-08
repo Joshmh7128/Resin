@@ -14,6 +14,8 @@ export const THEME_IDS = [
   "monochrome",
   "midnight",
   "amoled",
+  "arbor",
+  "slate",
 ] as const;
 
 export type ThemeId = (typeof THEME_IDS)[number];
@@ -68,6 +70,18 @@ export const THEMES: ThemeOption[] = [
     label: "AMOLED",
     description: "True black, so the covers are all you see.",
     swatch: { bg: "#000000", surface: "#000000", fg: "#ffffff" },
+  },
+  {
+    id: "arbor",
+    label: "Arbor",
+    description: "Deep forest greens, dark without being flat black.",
+    swatch: { bg: "#0b1310", surface: "#121c17", fg: "#e6f1e9" },
+  },
+  {
+    id: "slate",
+    label: "Slate",
+    description: "Cool grey stone. Lighter than Dark, calmer than Light.",
+    swatch: { bg: "#e8eaed", surface: "#f4f5f7", fg: "#232830" },
   },
 ];
 

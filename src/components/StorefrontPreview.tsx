@@ -42,6 +42,12 @@ export interface PreviewOptions {
   featuredLayout: FeaturedLayoutId;
   accentColor: string;
   storeName: string;
+  /**
+   * The real "N records · updated …" line, built by the page. The sleeves are
+   * stand-ins because artwork can't be fetched instantly, but anything the shop
+   * can check against its own storefront should be true rather than invented.
+   */
+  meta: string;
   logoUrl?: string | null;
   bannerUrl?: string | null;
 }
@@ -96,6 +102,7 @@ export function StoreInfoPreview({
   accentColor,
   headerStyle,
   storeName,
+  meta,
   logoUrl,
   bannerUrl,
   aboutText,
@@ -105,6 +112,7 @@ export function StoreInfoPreview({
   accentColor: string;
   headerStyle: HeaderStyleId;
   storeName: string;
+  meta: string;
   logoUrl?: string | null;
   bannerUrl?: string | null;
   aboutText?: string | null;
@@ -147,7 +155,7 @@ export function StoreInfoPreview({
           )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-st-fg">{storeName || "Your store"}</p>
-            <p className="truncate text-[11px] text-st-faint">1,204 records · updated today</p>
+            <p className="truncate text-[11px] text-st-faint">{meta}</p>
           </div>
           <span className="shrink-0 rounded-full border border-st-border px-2 py-0.5 text-[10px] font-medium text-st-muted">
             Info
@@ -221,9 +229,7 @@ function Header({ options, banner }: { options: PreviewOptions; banner: boolean 
           <p className="truncate text-[9px] font-semibold leading-tight text-st-fg">
             {options.storeName || "Your store"}
           </p>
-          <p className="truncate text-[7px] leading-tight text-st-faint">
-            1,204 records · updated today
-          </p>
+          <p className="truncate text-[7px] leading-tight text-st-faint">{options.meta}</p>
         </div>
 
         <span className="shrink-0 rounded-full border border-st-border px-1.5 py-0.5 text-[7px] font-medium text-st-muted">

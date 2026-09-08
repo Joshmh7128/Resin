@@ -50,7 +50,7 @@ function detailsOf(store: SafeStore): Details {
  * half-finished URL is visible as a broken picture straight away rather than
  * after a save and a trip to the storefront.
  */
-export function ShopDetailsForm({ store }: { store: SafeStore }) {
+export function ShopDetailsForm({ store, meta }: { store: SafeStore; meta: string }) {
   const [state, formAction] = useActionState(updateShopDetailsAction, initialState);
 
   const { values, set, dirty } = useSyncedForm(detailsOf(store));
@@ -199,6 +199,7 @@ export function ShopDetailsForm({ store }: { store: SafeStore }) {
           accentColor={store.accentColor}
           headerStyle={presentation.headerStyle}
           storeName={store.name}
+          meta={meta}
           logoUrl={usable(values.logoUrl)}
           bannerUrl={usable(values.bannerUrl)}
           aboutText={values.aboutText || null}

@@ -31,7 +31,7 @@ import {
  * revalidates, so the selection would visibly snap back to the old option
  * before correcting itself.
  */
-export function AppearanceSections({ store }: { store: SafeStore }) {
+export function AppearanceSections({ store, meta }: { store: SafeStore; meta: string }) {
   const saved = resolvePresentation(store);
 
   const base = {
@@ -41,6 +41,7 @@ export function AppearanceSections({ store }: { store: SafeStore }) {
     featuredLayout: saved.featuredLayout,
     accentColor: store.accentColor,
     storeName: store.name,
+    meta,
     logoUrl: store.logoUrl,
     bannerUrl: store.bannerUrl,
   } satisfies PreviewOptions;

@@ -48,6 +48,19 @@ export function formatRelativeTime(date: Date): string {
   return `${years} year${years === 1 ? "" : "s"} ago`;
 }
 
+/**
+ * The line under a shop's name: how many records it has, and when they last
+ * came from Discogs.
+ *
+ * Defined once because the storefront header and the dashboard previews both
+ * show it, and a preview that words it differently from the real page is worse
+ * than no preview at all.
+ */
+export function storeMeta(itemCount: number, lastSyncAt: Date | null): string {
+  const records = `${itemCount.toLocaleString()} record${itemCount === 1 ? "" : "s"}`;
+  return lastSyncAt ? `${records} · updated ${formatRelativeTime(lastSyncAt)}` : records;
+}
+
 export function formatPrice(price: number | null, currency: string | null): string {
   if (price == null) return "Price on Discogs";
   try {

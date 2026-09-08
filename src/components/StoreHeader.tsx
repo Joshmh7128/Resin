@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatRelativeTime } from "@/lib/format";
+import { storeMeta } from "@/lib/format";
 import { storeLinks, type StoreLink } from "@/lib/store-links";
 import { StoreLinkIcon } from "@/components/StoreLinkIcon";
 import type { StorePresentation } from "@/lib/theme";
@@ -29,10 +29,7 @@ export function StoreHeader({
   const about = collectAbout(store);
 
   const meta = (
-    <p className="truncate text-xs text-st-faint">
-      {itemCount.toLocaleString()} record{itemCount === 1 ? "" : "s"}
-      {store.lastSyncAt && <> · updated {formatRelativeTime(store.lastSyncAt)}</>}
-    </p>
+    <p className="truncate text-xs text-st-faint">{storeMeta(itemCount, store.lastSyncAt)}</p>
   );
 
   // The profile picture sits beside the name in its own row, never over the
